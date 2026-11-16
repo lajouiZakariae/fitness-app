@@ -1,8 +1,13 @@
-import { DarkTheme, ThemeProvider, Stack } from "expo-router";
+import { DarkTheme, ThemeProvider, Stack, type ErrorBoundaryProps } from "expo-router";
 import { SQLiteProvider } from "expo-sqlite";
 import { StatusBar } from "expo-status-bar";
 import { migrateDatabase } from "@/db/migrations";
 import { colors } from "@/theme/colors";
+import { RouteError } from "@/components/route-error";
+
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  return <RouteError {...props} />;
+}
 
 const navigationTheme = {
   ...DarkTheme,

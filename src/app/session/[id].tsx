@@ -9,10 +9,12 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import type { ErrorBoundaryProps } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useKeepAwake } from "expo-keep-awake";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button, Card, sharedStyles } from "@/components/ui";
+import { Button, Card, InlineError, sharedStyles } from "@/components/ui";
+import { RouteError } from "@/components/route-error";
 import {
   addSessionSet,
   clearRestTimer,
@@ -26,21 +28,33 @@ import {
 import { useSessionStore } from "@/store/session-store";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 
+export function ErrorBoundary(props: ErrorBoundaryProps) {
+  return <RouteError {...props} />;
+}
+
 export default function WorkoutSessionScreen() {
   useKeepAwake();
   const db = useSQLiteContext();
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(rawId);
+  const validSessionId = !isNaN(sessionId) && Number.isInteger(sessionId) && sessionId > 0;
   const insets = useSafeAreaInsets();
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState<"loading" | "error" | "success">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [timerError, setTimerError] = useState("");
+  const [timerPhase, setTimerPhase] = useState<"loading" | "error" | "success">("success");
+  const [loadingMessage, setLoadingMessage] = useState("Loading session…");
+  const [retryKey, setRetryKey] = useState(0);
   const [now, setNow] = useState(0);
   const [weights, setWeights] = useState<Record<number, string>>({});
   const setActiveSessionId = useSessionStore(
     (state) => state.setActiveSessionId,
   );
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (isCancelled: () => boolean = () => false) => {
     const next = await getSession(db, sessionId);
+    if (isCancelled()) return;
     setSession(next);
     if (next) {
       setWeights((current) => {
@@ -52,13 +66,41 @@ export default function WorkoutSessionScreen() {
         return updated;
       });
       setActiveSessionId(next.status === "in_progress" ? next.id : null);
-    }
+    } else setActiveSessionId(null);
+    return next;
   }, [db, sessionId, setActiveSessionId]);
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      void refresh().finally(() => setLoading(false));
-    }, [refresh]),
+      let cancelled = false;
+      setPhase("loading");
+      setLoadingMessage(retryKey ? "Retrying session load…" : "Loading session…");
+      setLoadError("");
+      if (!validSessionId) {
+        setLoadError("Invalid session ID.");
+        setPhase("error");
+        return () => { cancelled = true; };
+      }
+      const load = async () => {
+        try {
+          const next = await refresh(() => cancelled);
+          if (!cancelled) {
+            if (next) setPhase("success");
+            else {
+              setLoadError("Session not found.");
+              setPhase("error");
+            }
+          }
+        } catch (error) {
+          console.error("Could not load the session.", error);
+          if (!cancelled) {
+            setLoadError("Could not load this workout session.");
+            setPhase("error");
+          }
+        }
+      };
+      void load();
+      return () => { cancelled = true; };
+    }, [refresh, retryKey, validSessionId]),
   );
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 250);
@@ -91,10 +133,29 @@ export default function WorkoutSessionScreen() {
         ),
       )
     : 0;
+  const clearExpiredTimer = useCallback(async (isCancelled: () => boolean = () => false) => {
+    if (isCancelled()) return;
+    setTimerPhase("loading");
+    setTimerError("");
+    try {
+      await clearRestTimer(db, sessionId);
+      await refresh(isCancelled);
+      if (!isCancelled()) setTimerPhase("success");
+    } catch (error) {
+      console.error("Could not clear the expired rest timer.", error);
+      if (!isCancelled()) {
+        setTimerError("Could not update the rest timer.");
+        setTimerPhase("error");
+      }
+    }
+  }, [db, refresh, sessionId]);
   useEffect(() => {
-    if (session?.rest_started_at && timerRemaining === 0)
-      void clearRestTimer(db, session.id).then(refresh);
-  }, [db, refresh, session, timerRemaining]);
+    if (session?.rest_started_at && timerRemaining === 0) {
+      let cancelled = false;
+      void Promise.resolve().then(() => clearExpiredTimer(() => cancelled));
+      return () => { cancelled = true; };
+    }
+  }, [clearExpiredTimer, session, timerRemaining]);
   const toggleSet = async (
     setId: number,
     currentCompleted: boolean,
@@ -107,33 +168,90 @@ export default function WorkoutSessionScreen() {
       return;
     }
     const nextCompleted = !currentCompleted;
-    await updateSet(db, setId, nextCompleted, value);
-    if (nextCompleted && rest > 0) await setRestTimer(db, sessionId, rest);
-    else if (!nextCompleted && session?.rest_started_at)
-      await clearRestTimer(db, sessionId);
-    await refresh();
+    setActionError("");
+    try {
+      await updateSet(db, setId, nextCompleted, value);
+      if (nextCompleted && rest > 0) await setRestTimer(db, sessionId, rest);
+      else if (!nextCompleted && session?.rest_started_at)
+        await clearRestTimer(db, sessionId);
+      await refresh();
+    } catch (error) {
+      console.error("Could not update the set.", error);
+      setActionError("Could not update this set. Please try again.");
+    }
   };
-  const finish = () => {
-    const save = async () => {
+  const save = async () => {
+    setActionError("");
+    try {
       await completeSession(db, sessionId);
       setActiveSessionId(null);
       router.replace("/(tabs)/home");
-    };
+    } catch (error) {
+      console.error("Could not finish the workout.", error);
+      setActionError("Could not finish the workout. Your session is still saved.");
+    }
+  };
+  const finish = () => {
     if (completed < total)
       Alert.alert(
         "Finish workout?",
         `${total - completed} set${total - completed === 1 ? "" : "s"} are unfinished. They will be saved as incomplete.`,
         [
           { text: "Keep training", style: "cancel" },
-          { text: "Finish workout", onPress: () => void save() },
+          { text: "Finish workout", onPress: () => { void save(); } },
         ],
       );
     else void save();
   };
-  if (loading)
+  const saveWeight = async (setId: number, completedValue: boolean) => {
+    const raw = weights[setId]?.trim() ?? "";
+    const value = raw ? Number(raw.replace(",", ".")) : null;
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      setActionError("Enter a valid weight in kilograms.");
+      return;
+    }
+    setActionError("");
+    try {
+      await updateSet(db, setId, completedValue, value);
+    } catch (error) {
+      console.error("Could not save the set weight.", error);
+      setActionError("Could not save the weight. Please try again.");
+    }
+  };
+  const changeSetCount = async (operation: "add" | "remove", exercise: Session["exercises"][number]) => {
+    setActionError("");
+    try {
+      if (operation === "add") await addSessionSet(db, exercise);
+      else await removeSessionSet(db, exercise);
+      await refresh();
+    } catch (error) {
+      console.error(`Could not ${operation} a session set.`, error);
+      setActionError(`Could not ${operation} a set. Please try again.`);
+    }
+  };
+  const skipRest = async () => {
+    setActionError("");
+    try {
+      await clearRestTimer(db, sessionId);
+      await refresh();
+    } catch (error) {
+      console.error("Could not skip the rest timer.", error);
+      setActionError("Could not skip the rest timer. Please try again.");
+    }
+  };
+  if (phase === "loading")
     return (
       <View style={styles.center}>
-        <Text style={styles.secondary}>Loading session…</Text>
+        <Text style={styles.secondary}>{loadingMessage}</Text>
+      </View>
+    );
+  if (phase === "error")
+    return (
+      <View style={styles.center}>
+        <Text style={styles.title}>Session unavailable</Text>
+        <Text style={styles.secondary}>{loadError}</Text>
+        {validSessionId ? <Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /> : null}
+        <Button title="Go home" variant="secondary" onPress={() => router.replace("/(tabs)/home")} />
       </View>
     );
   if (!session)
@@ -167,6 +285,14 @@ export default function WorkoutSessionScreen() {
           ]}
         />
       </View>
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <InlineError>{actionError}</InlineError>
+        <InlineError>{timerPhase === "error" ? timerError : undefined}</InlineError>
+        {timerPhase === "loading" ? <Text style={styles.secondary}>Updating rest timer…</Text> : null}
+        {timerPhase === "error" ? (
+          <Button title="Retry timer update" variant="secondary" onPress={() => { void clearExpiredTimer(); }} />
+        ) : null}
+      </View>
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -188,9 +314,7 @@ export default function WorkoutSessionScreen() {
                     exercise.sets.length === 0
                   }
                   style={sharedStyles.smallButton}
-                  onPress={() => {
-                    void removeSessionSet(db, exercise).then(refresh);
-                  }}
+                  onPress={() => { void changeSetCount("remove", exercise); }}
                 >
                   <Text style={styles.actionText}>−</Text>
                 </Pressable>
@@ -198,9 +322,7 @@ export default function WorkoutSessionScreen() {
                   accessibilityLabel="Add a set"
                   disabled={session.status !== "in_progress"}
                   style={sharedStyles.smallButton}
-                  onPress={() => {
-                    void addSessionSet(db, exercise).then(refresh);
-                  }}
+                  onPress={() => { void changeSetCount("add", exercise); }}
                 >
                   <Text style={styles.actionText}>+</Text>
                 </Pressable>
@@ -233,28 +355,8 @@ export default function WorkoutSessionScreen() {
                   value={weights[set.id] ?? ""}
                   onChangeText={(value) => {
                     setWeights((current) => ({ ...current, [set.id]: value }));
-                    const raw = value.trim();
-                    const numeric = raw ? Number(raw.replace(",", ".")) : null;
-                    if (
-                      numeric === null ||
-                      (Number.isFinite(numeric) && numeric >= 0)
-                    )
-                      void updateSet(
-                        db,
-                        set.id,
-                        Boolean(set.completed),
-                        numeric,
-                      );
                   }}
-                  onBlur={() => {
-                    const raw = weights[set.id]?.trim() ?? "";
-                    const value = raw ? Number(raw.replace(",", ".")) : null;
-                    if (
-                      value === null ||
-                      (Number.isFinite(value) && value >= 0)
-                    )
-                      void updateSet(db, set.id, Boolean(set.completed), value);
-                  }}
+                  onBlur={() => { void saveWeight(set.id, Boolean(set.completed)); }}
                   placeholder="—"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="decimal-pad"
@@ -265,13 +367,13 @@ export default function WorkoutSessionScreen() {
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: Boolean(set.completed) }}
                   disabled={session.status !== "in_progress"}
-                  onPress={() =>
+                  onPress={() => {
                     void toggleSet(
                       set.id,
                       Boolean(set.completed),
                       exercise.rest_seconds,
-                    )
-                  }
+                    );
+                  }}
                   style={[
                     styles.checkbox,
                     set.completed ? styles.checked : null,
@@ -295,7 +397,7 @@ export default function WorkoutSessionScreen() {
               {String(timerRemaining % 60).padStart(2, "0")}
             </Text>
             <Pressable
-              onPress={() => void clearRestTimer(db, sessionId).then(refresh)}
+              onPress={() => { void skipRest(); }}
             >
               <Text style={styles.skip}>Skip</Text>
             </Pressable>

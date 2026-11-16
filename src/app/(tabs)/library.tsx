@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { Button, Card, Heading, Screen, sharedStyles } from "@/components/ui";
+import { Button, Card, Heading, InlineError, Screen, sharedStyles } from "@/components/ui";
 import {
   listExercises,
   listWorkouts,
@@ -16,17 +16,40 @@ export default function LibraryScreen() {
   const [tab, setTab] = useState<"Exercises" | "Workouts">("Exercises");
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const refresh = useCallback(() => {
-    void Promise.all([listExercises(db), listWorkouts(db)]).then(([e, w]) => {
-      setExercises(e);
-      setWorkouts(w);
-    });
-  }, [db]);
+  const [phase, setPhase] = useState<"loading" | "error" | "success">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("Loading your library…");
+  const [retryKey, setRetryKey] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh]),
+      let cancelled = false;
+      setPhase("loading");
+      setLoadingMessage(retryKey ? "Retrying library load…" : "Loading your library…");
+      setLoadError("");
+      const load = async () => {
+        try {
+          const [nextExercises, nextWorkouts] = await Promise.all([
+            listExercises(db), listWorkouts(db),
+          ]);
+          if (!cancelled) {
+            setExercises(nextExercises);
+            setWorkouts(nextWorkouts);
+            setPhase("success");
+          }
+        } catch (error) {
+          console.error("Could not load the library.", error);
+          if (!cancelled) {
+            setLoadError("Could not load your library.");
+            setPhase("error");
+          }
+        }
+      };
+      void load();
+      return () => { cancelled = true; };
+    }, [db, retryKey]),
   );
+  if (phase === "loading") return <Screen><Heading>Library</Heading><Text style={styles.detail}>{loadingMessage}</Text></Screen>;
+  if (phase === "error") return <Screen><Heading>Library</Heading><InlineError>{loadError}</InlineError><Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /></Screen>;
   const items = tab === "Exercises" ? exercises : workouts;
   return (
     <Screen scroll>

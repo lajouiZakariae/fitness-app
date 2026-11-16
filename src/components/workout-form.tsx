@@ -14,6 +14,7 @@ import {
 import {
   getWorkout,
   listExercises,
+  deleteWorkout,
   saveWorkout,
   type Exercise,
   type WorkoutExercise,
@@ -34,24 +35,47 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
   const [library, setLibrary] = useState<Exercise[]>([]);
   const [items, setItems] = useState<Draft[]>([]);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("Loading workout data…");
+  const [loadPhase, setLoadPhase] = useState<"loading" | "error" | "success">("loading");
+  const [retryKey, setRetryKey] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      let live = true;
-      void Promise.all([
-        listExercises(db),
-        workoutId ? getWorkout(db, workoutId) : Promise.resolve(null),
-      ]).then(([available, workout]) => {
-        if (!live) return;
-        setLibrary(available);
-        if (workout) {
-          setName(workout.name);
-          setItems(workout.exercises.map((item) => toDraft(item)));
+      let cancelled = false;
+      setLoadPhase("loading");
+      setLoadingMessage(retryKey ? "Retrying workout data…" : "Loading workout data…");
+      setLoadError("");
+      const load = async () => {
+        try {
+          const [available, workout] = await Promise.all([
+            listExercises(db),
+            workoutId ? getWorkout(db, workoutId) : Promise.resolve(null),
+          ]);
+          if (cancelled) return;
+          if (workoutId && !workout) {
+            setLoadError("Workout not found.");
+            setLoadPhase("error");
+            return;
+          }
+          setLibrary(available);
+          if (workout) {
+            setName(workout.name);
+            setItems(workout.exercises.map((item) => toDraft(item)));
+          }
+          setLoadPhase("success");
+        } catch (loadFailure) {
+          console.error("Could not load the workout form.", loadFailure);
+          if (!cancelled) {
+            setLoadError("Could not load workout data.");
+            setLoadPhase("error");
+          }
         }
-      });
-      return () => {
-        live = false;
       };
-    }, [db, workoutId]),
+      void load();
+      return () => {
+        cancelled = true;
+      };
+    }, [db, workoutId, retryKey]),
   );
   const addExercise = (exercise: Exercise) =>
     setItems((current) => [
@@ -111,25 +135,39 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
     try {
       await saveWorkout(db, { id: workoutId, name, exercises: parsed });
       router.back();
-    } catch {
-      setError("Could not save the workout.");
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : String(saveError);
+      if (message.toLowerCase().includes("unique constraint")) {
+        setError("A workout with that name already exists.");
+      } else {
+        console.error("Could not save the workout.", saveError);
+        setError("Could not save the workout.");
+      }
     }
   };
   const deleteTemplate = () => {
     if (!workoutId) return;
+    const remove = async () => {
+      setError("");
+      try {
+        await deleteWorkout(db, workoutId);
+        router.back();
+      } catch (deleteError) {
+        console.error("Could not delete the workout.", deleteError);
+        setError("Could not delete the workout. Please try again.");
+      }
+    };
     Alert.alert("Delete workout?", "Completed workout sessions will be kept.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          void db
-            .runAsync("DELETE FROM workouts WHERE id=?", workoutId)
-            .then(() => router.back());
-        },
+        onPress: () => { void remove(); },
       },
     ]);
   };
+  if (loadPhase === "loading") return <Screen><Heading>{workoutId ? "Edit workout" : "New workout"}</Heading><Text style={styles.muted}>{loadingMessage}</Text></Screen>;
+  if (loadPhase === "error") return <Screen><Heading>{workoutId ? "Edit workout" : "New workout"}</Heading><InlineError>{loadError}</InlineError><Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /><Button title="Back" variant="secondary" onPress={() => router.back()} /></Screen>;
   return (
     <Screen scroll>
       <Heading
