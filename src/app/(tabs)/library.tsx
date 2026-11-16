@@ -1,11 +1,20 @@
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { Button, Card, Heading, InlineError, Screen, sharedStyles } from "@/components/ui";
+import { IconButton } from "@/components/icon-button";
+import {
+  Button,
+  Card,
+  Heading,
+  InlineError,
+  Screen,
+  sharedStyles,
+} from "@/components/ui";
 import {
   listExercises,
   listWorkouts,
+  deleteExercise,
   type Exercise,
   type Workout,
 } from "@/db/queries";
@@ -16,20 +25,59 @@ export default function LibraryScreen() {
   const [tab, setTab] = useState<"Exercises" | "Workouts">("Exercises");
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [phase, setPhase] = useState<"loading" | "error" | "success">("loading");
+  const [phase, setPhase] = useState<"loading" | "error" | "success">(
+    "loading",
+  );
   const [loadError, setLoadError] = useState("");
   const [loadingMessage, setLoadingMessage] = useState("Loading your library…");
   const [retryKey, setRetryKey] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<Exercise | null>(null);
+  const [deletePhase, setDeletePhase] = useState<
+    "confirm" | "pending" | "succeeded" | "error"
+  >("confirm");
+  const [deleteError, setDeleteError] = useState("");
+
+  const closeDeleteDialog = () => {
+    if (deletePhase !== "pending") {
+      setDeleteTarget(null);
+      setDeletePhase("confirm");
+      setDeleteError("");
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deletePhase === "pending") return;
+    setDeletePhase("pending");
+    setDeleteError("");
+    try {
+      await deleteExercise(db, deleteTarget.id);
+      setExercises((current) =>
+        current.filter((exercise) => exercise.id !== deleteTarget.id),
+      );
+      setDeletePhase("succeeded");
+    } catch (error) {
+      console.error("Could not delete exercise.", error);
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "Could not delete the exercise. Please try again.",
+      );
+      setDeletePhase("error");
+    }
+  };
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setPhase("loading");
-      setLoadingMessage(retryKey ? "Retrying library load…" : "Loading your library…");
+      setLoadingMessage(
+        retryKey ? "Retrying library load…" : "Loading your library…",
+      );
       setLoadError("");
       const load = async () => {
         try {
           const [nextExercises, nextWorkouts] = await Promise.all([
-            listExercises(db), listWorkouts(db),
+            listExercises(db),
+            listWorkouts(db),
           ]);
           if (!cancelled) {
             setExercises(nextExercises);
@@ -45,11 +93,26 @@ export default function LibraryScreen() {
         }
       };
       void load();
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }, [db, retryKey]),
   );
-  if (phase === "loading") return <Screen><Heading>Library</Heading><Text style={styles.detail}>{loadingMessage}</Text></Screen>;
-  if (phase === "error") return <Screen><Heading>Library</Heading><InlineError>{loadError}</InlineError><Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /></Screen>;
+  if (phase === "loading")
+    return (
+      <Screen>
+        <Heading>Library</Heading>
+        <Text style={styles.detail}>{loadingMessage}</Text>
+      </Screen>
+    );
+  if (phase === "error")
+    return (
+      <Screen>
+        <Heading>Library</Heading>
+        <InlineError>{loadError}</InlineError>
+        <Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} />
+      </Screen>
+    );
   const items = tab === "Exercises" ? exercises : workouts;
   return (
     <Screen scroll>
@@ -100,6 +163,18 @@ export default function LibraryScreen() {
                     : `${(item as Workout).exercise_count} exercises`}
                 </Text>
               </View>
+              {tab === "Exercises" ? (
+                <IconButton
+                  icon="trash-outline"
+                  label={`Delete ${(item as Exercise).name}`}
+                  danger
+                  onPress={() => {
+                    setDeleteTarget(item as Exercise);
+                    setDeletePhase("confirm");
+                    setDeleteError("");
+                  }}
+                />
+              ) : null}
               {tab === "Workouts" ? (
                 <Text style={styles.chevron}>›</Text>
               ) : null}
@@ -124,6 +199,65 @@ export default function LibraryScreen() {
           />
         </Card>
       )}
+      <Modal
+        visible={deleteTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDeleteDialog}
+      >
+        <View style={styles.dialogShade}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>
+              {deletePhase === "succeeded"
+                ? "Exercise deleted"
+                : "Delete exercise?"}
+            </Text>
+            <Text style={styles.detail}>
+              {deletePhase === "confirm" || deletePhase === "pending"
+                ? `Delete ${deleteTarget?.name ?? "this exercise"}? This can't be undone.`
+                : deletePhase === "succeeded"
+                  ? `${deleteTarget?.name ?? "The exercise"} was deleted.`
+                  : ""}
+            </Text>
+            {deletePhase === "error" ? (
+              <InlineError>{deleteError}</InlineError>
+            ) : null}
+            {deletePhase === "pending" ? (
+              <Text style={styles.detail}>Deleting exercise…</Text>
+            ) : deletePhase === "succeeded" ? (
+              <Button title="Done" onPress={closeDeleteDialog} />
+            ) : deletePhase === "error" ? (
+              <View style={styles.dialogActions}>
+                <Button
+                  title="Close"
+                  variant="secondary"
+                  onPress={closeDeleteDialog}
+                />
+                {deleteError.startsWith("You can't delete") ? null : (
+                  <Button
+                    title="Try again"
+                    variant="danger"
+                    onPress={confirmDelete}
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.dialogActions}>
+                <Button
+                  title="Cancel"
+                  variant="secondary"
+                  onPress={closeDeleteDialog}
+                />
+                <Button
+                  title="Delete"
+                  variant="danger"
+                  onPress={confirmDelete}
+                />
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -152,4 +286,22 @@ const styles = StyleSheet.create({
   },
   detail: { color: colors.textSecondary, fontSize: typography.caption },
   chevron: { color: colors.primary, fontSize: 30 },
+  dialogShade: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+    backgroundColor: colors.overlay,
+  },
+  dialog: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceElevated,
+  },
+  dialogTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.heading,
+    fontWeight: "800",
+  },
+  dialogActions: { flexDirection: "row", gap: spacing.sm },
 });

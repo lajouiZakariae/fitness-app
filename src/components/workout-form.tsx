@@ -1,7 +1,4 @@
-import { useCallback, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { router, useFocusEffect } from "expo-router";
-import { useSQLiteContext } from "expo-sqlite";
+import { IconButton } from "@/components/icon-button";
 import {
   Button,
   Card,
@@ -12,14 +9,18 @@ import {
   sharedStyles,
 } from "@/components/ui";
 import {
+  deleteWorkout,
   getWorkout,
   listExercises,
-  deleteWorkout,
   saveWorkout,
   type Exercise,
   type WorkoutExercise,
 } from "@/db/queries";
 import { colors, radius, spacing, typography } from "@/theme/colors";
+import { router, useFocusEffect } from "expo-router";
+import { useSQLiteContext } from "expo-sqlite";
+import { useCallback, useState } from "react";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 type Draft = {
   exercise_id: number;
@@ -37,13 +38,17 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [loadingMessage, setLoadingMessage] = useState("Loading workout data…");
-  const [loadPhase, setLoadPhase] = useState<"loading" | "error" | "success">("loading");
+  const [loadPhase, setLoadPhase] = useState<"loading" | "error" | "success">(
+    "loading",
+  );
   const [retryKey, setRetryKey] = useState(0);
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       setLoadPhase("loading");
-      setLoadingMessage(retryKey ? "Retrying workout data…" : "Loading workout data…");
+      setLoadingMessage(
+        retryKey ? "Retrying workout data…" : "Loading workout data…",
+      );
       setLoadError("");
       const load = async () => {
         try {
@@ -136,7 +141,8 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
       await saveWorkout(db, { id: workoutId, name, exercises: parsed });
       router.back();
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : String(saveError);
+      const message =
+        saveError instanceof Error ? saveError.message : String(saveError);
       if (message.toLowerCase().includes("unique constraint")) {
         setError("A workout with that name already exists.");
       } else {
@@ -162,12 +168,32 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => { void remove(); },
+        onPress: () => {
+          void remove();
+        },
       },
     ]);
   };
-  if (loadPhase === "loading") return <Screen><Heading>{workoutId ? "Edit workout" : "New workout"}</Heading><Text style={styles.muted}>{loadingMessage}</Text></Screen>;
-  if (loadPhase === "error") return <Screen><Heading>{workoutId ? "Edit workout" : "New workout"}</Heading><InlineError>{loadError}</InlineError><Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /><Button title="Back" variant="secondary" onPress={() => router.back()} /></Screen>;
+  if (loadPhase === "loading")
+    return (
+      <Screen>
+        <Heading>{workoutId ? "Edit workout" : "New workout"}</Heading>
+        <Text style={styles.muted}>{loadingMessage}</Text>
+      </Screen>
+    );
+  if (loadPhase === "error")
+    return (
+      <Screen>
+        <Heading>{workoutId ? "Edit workout" : "New workout"}</Heading>
+        <InlineError>{loadError}</InlineError>
+        <Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} />
+        <Button
+          title="Back"
+          variant="secondary"
+          onPress={() => router.back()}
+        />
+      </Screen>
+    );
   return (
     <Screen scroll>
       <Heading
@@ -192,29 +218,24 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
               <Text style={styles.muted}>{item.muscle}</Text>
             </View>
             <View style={sharedStyles.row}>
-              <Pressable
-                accessibilityLabel="Move exercise up"
-                style={sharedStyles.smallButton}
+              <IconButton
+                icon="arrow-up"
+                label="Move exercise up"
                 onPress={() => reorder(index, -1)}
-              >
-                <Text style={styles.icon}>↑</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Move exercise down"
-                style={sharedStyles.smallButton}
+              />
+              <IconButton
+                icon="arrow-down"
+                label="Move exercise down"
                 onPress={() => reorder(index, 1)}
-              >
-                <Text style={styles.icon}>↓</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Remove exercise"
-                style={sharedStyles.smallButton}
+              />
+              <IconButton
+                icon="trash-outline"
+                label="Remove exercise"
+                danger
                 onPress={() =>
                   setItems((current) => current.filter((_, i) => i !== index))
                 }
-              >
-                <Text style={styles.remove}>×</Text>
-              </Pressable>
+              />
             </View>
           </View>
           <View style={styles.fields}>
@@ -245,14 +266,20 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
       {library.length ? (
         <View style={styles.libraryRows}>
           {library.map((exercise) => (
-            <Pressable
-              key={exercise.id}
-              style={styles.addExercise}
-              onPress={() => addExercise(exercise)}
-            >
-              <Text style={styles.exerciseName}>{exercise.name}</Text>
-              <Text style={styles.muted}>{exercise.muscle} · Add +</Text>
-            </Pressable>
+            <View key={exercise.id} style={styles.addExercise}>
+              <Pressable
+                style={styles.addExerciseInfo}
+                onPress={() => addExercise(exercise)}
+              >
+                <Text style={styles.exerciseName}>{exercise.name}</Text>
+                <Text style={styles.muted}>{exercise.muscle}</Text>
+              </Pressable>
+              <IconButton
+                icon="add"
+                label={`Add ${exercise.name}`}
+                onPress={() => addExercise(exercise)}
+              />
+            </View>
           ))}
         </View>
       ) : (
@@ -268,22 +295,24 @@ export function WorkoutForm({ workoutId }: { workoutId?: number }) {
         </Card>
       )}
       <InlineError>{error}</InlineError>
-      <Button
-        title={workoutId ? "Save changes" : "Create workout"}
-        onPress={() => void save()}
-      />
-      <Button
-        title="Cancel"
-        variant="secondary"
-        onPress={() => router.back()}
-      />
-      {workoutId ? (
+      <View style={styles.actionsBar}>
         <Button
-          title="Delete workout"
-          variant="danger"
-          onPress={deleteTemplate}
+          title={workoutId ? "Save changes" : "Create workout"}
+          onPress={() => void save()}
         />
-      ) : null}
+        <Button
+          title="Cancel"
+          variant="secondary"
+          onPress={() => router.back()}
+        />
+        {workoutId ? (
+          <Button
+            title="Delete workout"
+            variant="danger"
+            onPress={deleteTemplate}
+          />
+        ) : null}
+      </View>
     </Screen>
   );
 }
@@ -306,7 +335,6 @@ const styles = StyleSheet.create({
   },
   muted: { color: colors.textSecondary, fontSize: typography.caption },
   icon: { color: colors.textPrimary, fontSize: 20 },
-  remove: { color: colors.danger, fontSize: 24 },
   fields: { flexDirection: "row", gap: spacing.sm },
   sectionLabel: {
     color: colors.textSecondary,
@@ -324,7 +352,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    justifyContent: "center",
+    justifyContent: "space-between",
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
   },
+  addExerciseInfo: {
+    flex: 1,
+    justifyContent: "center",
+    gap: spacing.xs,
+    minHeight: 60,
+  },
+  actionsBar: { gap: 10 },
 });

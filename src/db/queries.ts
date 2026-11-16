@@ -137,6 +137,18 @@ export async function saveWorkout(
 export async function deleteWorkout(db: SQLiteDatabase, id: number) {
   await db.runAsync("DELETE FROM workouts WHERE id=?", id);
 }
+export async function deleteExercise(db: SQLiteDatabase, id: number) {
+  await db.withTransactionAsync(async () => {
+    const usage = await db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM workout_exercises WHERE exercise_id=?",
+      id,
+    );
+    if ((usage?.count ?? 0) > 0) {
+      throw new Error("You can't delete the exercise; it's used in workouts.");
+    }
+    await db.runAsync("DELETE FROM exercises WHERE id=?", id);
+  });
+}
 export async function getActiveSession(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<Omit<Session, "exercises">>(
     "SELECT * FROM sessions WHERE status='in_progress' ORDER BY started_at DESC LIMIT 1",
@@ -208,6 +220,9 @@ export async function discardSession(db: SQLiteDatabase, id: number) {
     "DELETE FROM sessions WHERE id=? AND status='in_progress'",
     id,
   );
+}
+export async function deleteSession(db: SQLiteDatabase, id: number) {
+  await db.runAsync("DELETE FROM sessions WHERE id=?", id);
 }
 export async function updateSet(
   db: SQLiteDatabase,

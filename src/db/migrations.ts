@@ -74,5 +74,24 @@ export async function migrateDatabase(db: SQLiteDatabase) {
       CREATE UNIQUE INDEX one_active_session ON sessions(status) WHERE status='in_progress';
       PRAGMA user_version = 3;
     `);
+    version = 3;
+  }
+
+  if (version < 4) {
+    await db.execAsync(`
+      INSERT OR IGNORE INTO exercises(name, muscle) VALUES
+        ('Lying Leg Curl', 'Hamstrings'),
+        ('Leg Extensions', 'Quads'),
+        ('Cable Row', 'Back'),
+        ('Machine Row', 'Back'),
+        ('Lat Pulldown', 'Back'),
+        ('Machine Press', 'Chest'),
+        ('Incline Dumbbell Bench Press', 'Chest'),
+        ('Seated Dumbbell Press', 'Shoulders'),
+        ('Lateral Dumbbell Raise', 'Shoulders'),
+        ('Standing Machine Calf Raise', 'Calves');
+      PRAGMA user_version = 4;
+    `);
+    version = 4;
   }
 }

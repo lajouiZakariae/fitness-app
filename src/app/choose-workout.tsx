@@ -14,7 +14,9 @@ import { colors, spacing, typography } from "@/theme/colors";
 export default function ChooseWorkoutScreen() {
   const db = useSQLiteContext();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [phase, setPhase] = useState<"loading" | "error" | "success">("loading");
+  const [phase, setPhase] = useState<"loading" | "error" | "success">(
+    "loading",
+  );
   const [loadError, setLoadError] = useState("");
   const [loadingMessage, setLoadingMessage] = useState("Loading workouts…");
   const [actionError, setActionError] = useState("");
@@ -23,7 +25,9 @@ export default function ChooseWorkoutScreen() {
     useCallback(() => {
       let cancelled = false;
       setPhase("loading");
-      setLoadingMessage(retryKey ? "Retrying workout load…" : "Loading workouts…");
+      setLoadingMessage(
+        retryKey ? "Retrying workout load…" : "Loading workouts…",
+      );
       setLoadError("");
       const load = async () => {
         try {
@@ -41,7 +45,9 @@ export default function ChooseWorkoutScreen() {
         }
       };
       void load();
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }, [db, retryKey]),
   );
   const choose = async (workout: Workout) => {
@@ -60,17 +66,39 @@ export default function ChooseWorkoutScreen() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.toLowerCase().includes("active session")) {
-        setActionError("A workout is already in progress. Resume or finish it before starting another.");
+        setActionError(
+          "A workout is already in progress. Resume or finish it before starting another.",
+        );
       } else if (message.toLowerCase().includes("workout not found")) {
-        setActionError("This workout is no longer available. Refresh and try another.");
+        setActionError(
+          "This workout is no longer available. Refresh and try another.",
+        );
       } else {
         console.error("Could not start workout.", error);
         setActionError("Could not start workout. Please try again.");
       }
     }
   };
-  if (phase === "loading") return <Screen><Heading>Start a workout</Heading><Text style={styles.detail}>{loadingMessage}</Text></Screen>;
-  if (phase === "error") return <Screen><Heading>Start a workout</Heading><InlineError>{loadError}</InlineError><Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} /><Button title="Back" variant="secondary" onPress={() => router.back()} /></Screen>;
+  if (phase === "loading")
+    return (
+      <Screen>
+        <Heading>Start a workout</Heading>
+        <Text style={styles.detail}>{loadingMessage}</Text>
+      </Screen>
+    );
+  if (phase === "error")
+    return (
+      <Screen>
+        <Heading>Start a workout</Heading>
+        <InlineError>{loadError}</InlineError>
+        <Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} />
+        <Button
+          title="Back"
+          variant="secondary"
+          onPress={() => router.back()}
+        />
+      </Screen>
+    );
   return (
     <Screen scroll>
       <Heading subtitle="Choose a template to begin">Start a workout</Heading>

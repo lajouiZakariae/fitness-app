@@ -1,4 +1,9 @@
-import { DarkTheme, ThemeProvider, Stack, type ErrorBoundaryProps } from "expo-router";
+import {
+  DarkTheme,
+  ThemeProvider,
+  Stack,
+  type ErrorBoundaryProps,
+} from "expo-router";
 import { SQLiteProvider } from "expo-sqlite";
 import { StatusBar } from "expo-status-bar";
 import { migrateDatabase } from "@/db/migrations";

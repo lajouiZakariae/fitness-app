@@ -20,8 +20,15 @@ export function RouteError({ error, retry }: ErrorBoundaryProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Something went wrong</Text>
-      <Text style={styles.message}>This screen couldn’t be displayed. Try again.</Text>
-      <Button title="Try again" onPress={() => { void retryRoute(); }} />
+      <Text style={styles.message}>
+        This screen couldn’t be displayed. Try again.
+      </Text>
+      <Button
+        title="Try again"
+        onPress={() => {
+          void retryRoute();
+        }}
+      />
     </View>
   );
 }
@@ -34,6 +41,10 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     backgroundColor: colors.background,
   },
-  title: { color: colors.textPrimary, fontSize: typography.heading, fontWeight: "800" },
+  title: {
+    color: colors.textPrimary,
+    fontSize: typography.heading,
+    fontWeight: "800",
+  },
   message: { color: colors.textSecondary, fontSize: typography.body },
 });
