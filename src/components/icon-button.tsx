@@ -3,7 +3,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Pressable, StyleSheet } from "react-native";
 
 type ActionIcon =
-  "add" | "remove" | "trash-outline" | "arrow-up" | "arrow-down";
+  | "add"
+  | "remove"
+  | "trash-outline"
+  | "arrow-up"
+  | "arrow-down"
+  | "swap-horizontal";
 
 export function IconButton({
   icon,

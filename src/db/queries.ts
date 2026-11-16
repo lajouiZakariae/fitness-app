@@ -260,6 +260,72 @@ export async function removeSessionSet(
   if (!last) return;
   await db.runAsync("DELETE FROM session_sets WHERE id=?", last.id);
 }
+export async function addExerciseToSession(
+  db: SQLiteDatabase,
+  sessionId: number,
+  exercise: Exercise,
+) {
+  await db.withTransactionAsync(async () => {
+    const position = await db.getFirstAsync<{ next_position: number }>(
+      "SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM session_exercises WHERE session_id=?",
+      sessionId,
+    );
+    const inserted = await db.runAsync(
+      "INSERT INTO session_exercises(session_id, exercise_id, exercise_name, muscle, position, rest_seconds) VALUES (?, ?, ?, ?, ?, ?)",
+      sessionId,
+      exercise.id,
+      exercise.name,
+      exercise.muscle,
+      position?.next_position ?? 0,
+      90,
+    );
+    for (let setNumber = 1; setNumber <= 3; setNumber++) {
+      await db.runAsync(
+        "INSERT INTO session_sets(session_exercise_id, set_number, target_reps) VALUES (?, ?, ?)",
+        inserted.lastInsertRowId,
+        setNumber,
+        10,
+      );
+    }
+  });
+}
+export async function replaceSessionExercise(
+  db: SQLiteDatabase,
+  sessionExerciseId: number,
+  exercise: Exercise,
+) {
+  await db.runAsync(
+    "UPDATE session_exercises SET exercise_id=?, exercise_name=?, muscle=? WHERE id=?",
+    exercise.id,
+    exercise.name,
+    exercise.muscle,
+    sessionExerciseId,
+  );
+}
+export async function removeSessionExercise(
+  db: SQLiteDatabase,
+  session: Session,
+  sessionExerciseId: number,
+) {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      "DELETE FROM session_exercises WHERE id=? AND session_id=?",
+      sessionExerciseId,
+      session.id,
+    );
+    const remaining = await db.getAllAsync<{ id: number }>(
+      "SELECT id FROM session_exercises WHERE session_id=? ORDER BY position",
+      session.id,
+    );
+    for (let position = 0; position < remaining.length; position++) {
+      await db.runAsync(
+        "UPDATE session_exercises SET position=? WHERE id=?",
+        position,
+        remaining[position].id,
+      );
+    }
+  });
+}
 export async function setRestTimer(
   db: SQLiteDatabase,
   sessionId: number,

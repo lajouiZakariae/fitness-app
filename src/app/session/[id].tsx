@@ -8,6 +8,7 @@ import {
   deleteSession,
   getSession,
   removeSessionSet,
+  removeSessionExercise,
   setRestTimer,
   updateSet,
   type Session,
@@ -21,6 +22,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -56,6 +58,10 @@ export default function WorkoutSessionScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [now, setNow] = useState(0);
   const [weights, setWeights] = useState<Record<number, string>>({});
+  const [removeExerciseTarget, setRemoveExerciseTarget] = useState<
+    Session["exercises"][number] | null
+  >(null);
+  const [removeExercisePending, setRemoveExercisePending] = useState(false);
   const setActiveSessionId = useSessionStore(
     (state) => state.setActiveSessionId,
   );
@@ -260,6 +266,21 @@ export default function WorkoutSessionScreen() {
       setActionError(`Could not ${operation} a set. Please try again.`);
     }
   };
+  const confirmRemoveExercise = async () => {
+    if (!session || !removeExerciseTarget || removeExercisePending) return;
+    setRemoveExercisePending(true);
+    setActionError("");
+    try {
+      await removeSessionExercise(db, session, removeExerciseTarget.id);
+      setRemoveExerciseTarget(null);
+      await refresh();
+    } catch (error) {
+      console.error("Could not remove the session exercise.", error);
+      setActionError("Could not remove this exercise. Please try again.");
+    } finally {
+      setRemoveExercisePending(false);
+    }
+  };
   const confirmDeleteSession = () => {
     Alert.alert(
       "Delete workout session?",
@@ -394,6 +415,20 @@ export default function WorkoutSessionScreen() {
               </View>
               <View style={sharedStyles.row}>
                 <IconButton
+                  icon="swap-horizontal"
+                  label={`Change ${exercise.exercise_name}`}
+                  disabled={session.status !== "in_progress"}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/session/add-exercise",
+                      params: {
+                        sessionId: String(session.id),
+                        replaceId: String(exercise.id),
+                      },
+                    })
+                  }
+                />
+                <IconButton
                   icon="remove"
                   label="Remove a set"
                   disabled={
@@ -411,6 +446,13 @@ export default function WorkoutSessionScreen() {
                   onPress={() => {
                     void changeSetCount("add", exercise);
                   }}
+                />
+                <IconButton
+                  icon="trash-outline"
+                  label={`Remove ${exercise.exercise_name} from session`}
+                  danger
+                  disabled={session.status !== "in_progress"}
+                  onPress={() => setRemoveExerciseTarget(exercise)}
                 />
               </View>
             </View>
@@ -475,6 +517,17 @@ export default function WorkoutSessionScreen() {
             ))}
           </Card>
         ))}
+        <Button
+          title="Add exercise"
+          variant="secondary"
+          disabled={session.status !== "in_progress"}
+          onPress={() =>
+            router.push({
+              pathname: "/session/add-exercise",
+              params: { sessionId: String(session.id) },
+            })
+          }
+        />
       </ScrollView>
       {session.rest_started_at && timerRemaining > 0 ? (
         <View style={styles.timerDock}>
@@ -513,6 +566,38 @@ export default function WorkoutSessionScreen() {
           disabled={session.status !== "in_progress"}
         />
       </View>
+      <Modal
+        visible={removeExerciseTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!removeExercisePending) setRemoveExerciseTarget(null);
+        }}
+      >
+        <View style={styles.dialogShade}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>Remove exercise?</Text>
+            <Text style={styles.secondary}>
+              Remove {removeExerciseTarget?.exercise_name ?? "this exercise"} and
+              its sets from this workout session?
+            </Text>
+            <View style={styles.dialogActions}>
+              <Button
+                title="Cancel"
+                variant="secondary"
+                disabled={removeExercisePending}
+                onPress={() => setRemoveExerciseTarget(null)}
+              />
+              <Button
+                title={removeExercisePending ? "Removing…" : "Remove"}
+                variant="danger"
+                disabled={removeExercisePending}
+                onPress={() => void confirmRemoveExercise()}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -549,6 +634,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
     marginBottom: spacing.md,
     height: 8,
     borderRadius: radius.pill,
@@ -658,4 +744,22 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
   },
+  dialogShade: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.lg,
+    backgroundColor: colors.overlay,
+  },
+  dialog: {
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceElevated,
+  },
+  dialogTitle: {
+    color: colors.textPrimary,
+    fontSize: typography.heading,
+    fontWeight: "800",
+  },
+  dialogActions: { flexDirection: "row", gap: spacing.sm },
 });
