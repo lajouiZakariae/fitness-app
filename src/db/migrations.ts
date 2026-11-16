@@ -1,8 +1,10 @@
-import type { SQLiteDatabase } from 'expo-sqlite';
+import type { SQLiteDatabase } from "expo-sqlite";
 
 export async function migrateDatabase(db: SQLiteDatabase) {
-  await db.execAsync('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  await db.execAsync("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
+  const row = await db.getFirstAsync<{ user_version: number }>(
+    "PRAGMA user_version",
+  );
   let version = row?.user_version ?? 0;
 
   if (version < 1) {
