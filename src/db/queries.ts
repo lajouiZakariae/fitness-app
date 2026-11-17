@@ -179,6 +179,23 @@ export async function getSession(
   );
   return { ...session, exercises: complete };
 }
+export async function listCompletedSessions(db: SQLiteDatabase) {
+  return db.getAllAsync<{
+    id: number;
+    workout_name: string;
+    completed_at: string | null;
+    completed_sets: number;
+  }>(
+    `SELECT s.id, s.workout_name, s.completed_at,
+      COALESCE(SUM(ss.completed), 0) AS completed_sets
+     FROM sessions s
+     LEFT JOIN session_exercises se ON se.session_id=s.id
+     LEFT JOIN session_sets ss ON ss.session_exercise_id=se.id
+     WHERE s.status='completed'
+     GROUP BY s.id
+     ORDER BY COALESCE(s.completed_at, s.started_at) DESC, s.id DESC`,
+  );
+}
 export async function startSession(db: SQLiteDatabase, workoutId: number) {
   const workout = await getWorkout(db, workoutId);
   if (!workout) throw new Error("Workout not found.");

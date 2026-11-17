@@ -34,6 +34,12 @@ export default function TabsLayout() {
           onPress={() => router.push("/(tabs)/add")}
         />
         <Tab
+          label="Sessions"
+          symbol="◷"
+          active={pathname.includes("/sessions")}
+          onPress={() => router.push("/(tabs)/sessions")}
+        />
+        <Tab
           label="Library"
           symbol="▤"
           active={pathname.includes("/library")}

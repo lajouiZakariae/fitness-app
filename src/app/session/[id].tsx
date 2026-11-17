@@ -277,18 +277,14 @@ export default function WorkoutSessionScreen() {
     }
   };
 
-  const changeSetCount = async (
-    operation: "add" | "remove",
-    exercise: Session["exercises"][number],
-  ) => {
+  const removeSet = async (exercise: Session["exercises"][number]) => {
     setActionError("");
     try {
-      if (operation === "add") await addSessionSet(db, exercise);
-      else await removeSessionSet(db, exercise);
+      await removeSessionSet(db, exercise);
       await refresh();
     } catch (error) {
-      console.error(`Could not ${operation} a session set.`, error);
-      setActionError(`Could not ${operation} a set. Please try again.`);
+      console.error(`Could not remove a session set.`, error);
+      setActionError(`Could not remove a set. Please try again.`);
     }
   };
   const confirmRemoveExercise = async () => {
@@ -461,7 +457,7 @@ export default function WorkoutSessionScreen() {
                     exercise.sets.length === 0
                   }
                   onPress={() => {
-                    void changeSetCount("remove", exercise);
+                    void removeSet(exercise);
                   }}
                 />
                 <IconButton
@@ -473,8 +469,6 @@ export default function WorkoutSessionScreen() {
                       exercise.sets.length > 0
                         ? exercise.sets.at(exercise.sets.length - 1)
                         : null;
-
-                    console.log(lastSet?.weight);
 
                     void addSet(exercise, lastSet?.weight ?? null);
                   }}
