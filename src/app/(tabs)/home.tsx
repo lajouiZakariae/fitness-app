@@ -1,14 +1,21 @@
-import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Button, Card, Heading, InlineError, Screen } from "@/components/ui";
+import {
+  getActiveSession,
+  listRecentWorkouts,
+  startSession,
+  type Session,
+  type Workout,
+} from "@/db/queries";
+import { colors, radius, spacing, typography } from "@/theme/colors";
 import { router, useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { Button, Card, Heading, InlineError, Screen } from "@/components/ui";
-import { getActiveSession, type Session } from "@/db/queries";
-import { colors, radius, spacing, typography } from "@/theme/colors";
+import { useCallback, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const [session, setSession] = useState<Session | null>(null);
+  const [recent, setRecent] = useState<Workout[]>([]);
   const [phase, setPhase] = useState<"loading" | "error" | "success">(
     "loading",
   );
@@ -29,8 +36,10 @@ export default function HomeScreen() {
       const load = async () => {
         try {
           const active = await getActiveSession(db);
+          const history = await listRecentWorkouts(db);
           if (!cancelled) {
             setSession(active);
+            setRecent(history);
             setPhase("success");
           }
         } catch (loadError) {
@@ -115,6 +124,39 @@ export default function HomeScreen() {
           </Card>
         </Pressable>
       ) : null}
+      {phase === "success" && recent.length ? (
+        <View style={styles.recent}>
+          <Text style={styles.sectionTitle}>Recent workouts</Text>
+          {recent.map((item) => (
+            <Pressable
+              key={item.id}
+              accessibilityRole="button"
+              onPress={async () => {
+                try {
+                  const id = await startSession(db, item.id);
+                  router.push({
+                    pathname: "/session/[id]",
+                    params: { id: String(id) },
+                  });
+                } catch {
+                  setError(
+                    "Finish your current workout before starting another.",
+                  );
+                  setPhase("error");
+                }
+              }}
+            >
+              <Card style={styles.recentCard}>
+                <View>
+                  <Text style={styles.recentName}>{item.name}</Text>
+                  <Text style={styles.secondary}>{item.exercise_count} exercises</Text>
+                </View>
+                <Text style={styles.arrow}>›</Text>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       <Card style={styles.tip}>
         <Text style={styles.sectionTitle}>Your training library</Text>
         <Text style={styles.description}>
@@ -165,5 +207,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   tip: { marginTop: "auto" },
+  recent: { gap: spacing.sm },
+  recentCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  recentName: {
+    color: colors.textPrimary,
+    fontSize: typography.body,
+    fontWeight: "700",
+  },
   errorBlock: { gap: spacing.sm },
 });

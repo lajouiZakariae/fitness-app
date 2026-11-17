@@ -7,10 +7,11 @@ import {
   completeSession,
   deleteSession,
   getSession,
-  removeSessionSet,
   removeSessionExercise,
+  removeSessionSet,
   setRestTimer,
   updateSet,
+  updateSetReps,
   type Session,
 } from "@/db/queries";
 import { useSessionStore } from "@/store/session-store";
@@ -58,6 +59,7 @@ export default function WorkoutSessionScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [now, setNow] = useState(0);
   const [weights, setWeights] = useState<Record<number, string>>({});
+  const [reps, setReps] = useState<Record<number, string>>({});
   const [removeExerciseTarget, setRemoveExerciseTarget] = useState<
     Session["exercises"][number] | null
   >(null);
@@ -71,6 +73,14 @@ export default function WorkoutSessionScreen() {
       if (isCancelled()) return;
       setSession(next);
       if (next) {
+        setReps((current) => {
+          const updated = { ...current };
+          for (const exercise of next.exercises)
+            for (const set of exercise.sets)
+              if (updated[set.id] === undefined)
+                updated[set.id] = String(set.target_reps);
+          return updated;
+        });
         setWeights((current) => {
           const updated = { ...current };
           for (const exercise of next.exercises)
@@ -252,6 +262,21 @@ export default function WorkoutSessionScreen() {
       setActionError("Could not save the weight. Please try again.");
     }
   };
+
+  const addSet = async (
+    exercise: Session["exercises"][number],
+    weight: number | null,
+  ) => {
+    setActionError("");
+    try {
+      await addSessionSet(db, exercise, weight);
+      await refresh();
+    } catch (error) {
+      console.error(`Could not add a session set.`, error);
+      setActionError(`Could not add a set. Please try again.`);
+    }
+  };
+
   const changeSetCount = async (
     operation: "add" | "remove",
     exercise: Session["exercises"][number],
@@ -444,7 +469,14 @@ export default function WorkoutSessionScreen() {
                   label="Add a set"
                   disabled={session.status !== "in_progress"}
                   onPress={() => {
-                    void changeSetCount("add", exercise);
+                    const lastSet =
+                      exercise.sets.length > 0
+                        ? exercise.sets.at(exercise.sets.length - 1)
+                        : null;
+
+                    console.log(lastSet?.weight);
+
+                    void addSet(exercise, lastSet?.weight ?? null);
                   }}
                 />
                 <IconButton
@@ -475,9 +507,33 @@ export default function WorkoutSessionScreen() {
                 <Text style={[styles.value, styles.numberCol]}>
                   {set.set_number}
                 </Text>
-                <Text style={[styles.value, styles.repsCol]}>
-                  {set.target_reps} reps
-                </Text>
+                <TextInput
+                  accessibilityLabel={`Target reps for set ${set.set_number}`}
+                  value={reps[set.id] ?? String(set.target_reps)}
+                  keyboardType="number-pad"
+                  editable={session.status === "in_progress"}
+                  onChangeText={(value) =>
+                    setReps((current) => ({ ...current, [set.id]: value }))
+                  }
+                  onBlur={() => {
+                    const nextReps = Number(reps[set.id]);
+                    if (
+                      Number.isInteger(nextReps) &&
+                      nextReps > 0 &&
+                      nextReps !== set.target_reps
+                    ) {
+                      void updateSetReps(db, set.id, nextReps)
+                        .then(() => refresh())
+                        .catch(() => setActionError("Could not save reps."));
+                    } else if (!Number.isInteger(nextReps) || nextReps < 1) {
+                      setReps((current) => ({
+                        ...current,
+                        [set.id]: String(set.target_reps),
+                      }));
+                    }
+                  }}
+                  style={[styles.weightInput, styles.repsCol]}
+                />
                 <TextInput
                   accessibilityLabel={`Weight for set ${set.set_number}`}
                   value={weights[set.id] ?? ""}
@@ -578,8 +634,8 @@ export default function WorkoutSessionScreen() {
           <View style={styles.dialog}>
             <Text style={styles.dialogTitle}>Remove exercise?</Text>
             <Text style={styles.secondary}>
-              Remove {removeExerciseTarget?.exercise_name ?? "this exercise"} and
-              its sets from this workout session?
+              Remove {removeExerciseTarget?.exercise_name ?? "this exercise"}{" "}
+              and its sets from this workout session?
             </Text>
             <View style={styles.dialogActions}>
               <Button

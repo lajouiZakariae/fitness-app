@@ -185,6 +185,10 @@ export async function startSession(db: SQLiteDatabase, workoutId: number) {
   const active = await getActiveSession(db);
   if (active) throw new Error("An active session already exists.");
   let sessionId = 0;
+  const previous = await db.getFirstAsync<{ id: number }>(
+    "SELECT id FROM sessions WHERE workout_id=? AND status='completed' ORDER BY completed_at DESC, started_at DESC LIMIT 1",
+    workout.id,
+  );
   await db.withTransactionAsync(async () => {
     const inserted = await db.runAsync(
       "INSERT INTO sessions(workout_id, workout_name, status, started_at) VALUES (?, ?, 'in_progress', ?)",
@@ -195,6 +199,19 @@ export async function startSession(db: SQLiteDatabase, workoutId: number) {
     sessionId = inserted.lastInsertRowId;
     for (let position = 0; position < workout.exercises.length; position++) {
       const exercise = workout.exercises[position];
+      const previousExercise = previous
+        ? await db.getFirstAsync<{ id: number }>(
+            "SELECT id FROM session_exercises WHERE session_id=? AND exercise_id=? ORDER BY id DESC LIMIT 1",
+            previous.id,
+            exercise.exercise_id,
+          )
+        : null;
+      const previousSets = previousExercise
+        ? await db.getAllAsync<{ target_reps: number; weight: number | null }>(
+            "SELECT target_reps, weight FROM session_sets WHERE session_exercise_id=? ORDER BY set_number",
+            previousExercise.id,
+          )
+        : [];
       const insertedExercise = await db.runAsync(
         "INSERT INTO session_exercises(session_id, exercise_id, exercise_name, muscle, position, rest_seconds) VALUES (?, ?, ?, ?, ?, ?)",
         sessionId,
@@ -204,12 +221,19 @@ export async function startSession(db: SQLiteDatabase, workoutId: number) {
         position,
         exercise.rest_seconds,
       );
-      for (let n = 1; n <= exercise.sets; n++)
+      const seedSets = previousSets.length
+        ? previousSets
+        : Array.from({ length: exercise.sets }, () => ({
+            target_reps: exercise.reps,
+            weight: null,
+          }));
+      for (let n = 1; n <= seedSets.length; n++)
         await db.runAsync(
-          "INSERT INTO session_sets(session_exercise_id, set_number, target_reps) VALUES (?, ?, ?)",
+          "INSERT INTO session_sets(session_exercise_id, set_number, target_reps, weight) VALUES (?, ?, ?, ?)",
           insertedExercise.lastInsertRowId,
           n,
-          exercise.reps,
+          seedSets[n - 1].target_reps,
+          seedSets[n - 1].weight,
         );
     }
   });
@@ -241,14 +265,16 @@ export async function updateSet(
 export async function addSessionSet(
   db: SQLiteDatabase,
   exercise: SessionExercise,
+  weight: number | null,
 ) {
   const nextNumber =
     exercise.sets.reduce((max, set) => Math.max(max, set.set_number), 0) + 1;
   const result = await db.runAsync(
-    "INSERT INTO session_sets(session_exercise_id, set_number, target_reps) VALUES (?, ?, ?)",
+    "INSERT INTO session_sets(session_exercise_id, set_number, target_reps, weight) VALUES (?, ?, ?, ?)",
     exercise.id,
     nextNumber,
     exercise.sets[exercise.sets.length - 1]?.target_reps ?? 1,
+    weight,
   );
   return result.lastInsertRowId;
 }
@@ -265,6 +291,16 @@ export async function addExerciseToSession(
   sessionId: number,
   exercise: Exercise,
 ) {
+  const previous = await db.getFirstAsync<{ id: number }>(
+    "SELECT se.id FROM session_exercises se JOIN sessions s ON s.id=se.session_id WHERE se.exercise_id=? AND s.status='completed' ORDER BY s.completed_at DESC, s.started_at DESC LIMIT 1",
+    exercise.id,
+  );
+  const previousSets = previous
+    ? await db.getAllAsync<{ target_reps: number; weight: number | null }>(
+        "SELECT target_reps, weight FROM session_sets WHERE session_exercise_id=? ORDER BY set_number",
+        previous.id,
+      )
+    : [];
   await db.withTransactionAsync(async () => {
     const position = await db.getFirstAsync<{ next_position: number }>(
       "SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM session_exercises WHERE session_id=?",
@@ -279,15 +315,35 @@ export async function addExerciseToSession(
       position?.next_position ?? 0,
       90,
     );
-    for (let setNumber = 1; setNumber <= 3; setNumber++) {
+    const seedSets = previousSets.length
+      ? previousSets
+      : Array.from({ length: 3 }, () => ({ target_reps: 10, weight: null }));
+    for (let setNumber = 1; setNumber <= seedSets.length; setNumber++) {
       await db.runAsync(
-        "INSERT INTO session_sets(session_exercise_id, set_number, target_reps) VALUES (?, ?, ?)",
+        "INSERT INTO session_sets(session_exercise_id, set_number, target_reps, weight) VALUES (?, ?, ?, ?)",
         inserted.lastInsertRowId,
         setNumber,
-        10,
+        seedSets[setNumber - 1].target_reps,
+        seedSets[setNumber - 1].weight,
       );
     }
   });
+}
+export async function updateSetReps(
+  db: SQLiteDatabase,
+  id: number,
+  reps: number,
+) {
+  await db.runAsync(
+    "UPDATE session_sets SET target_reps=? WHERE id=?",
+    reps,
+    id,
+  );
+}
+export async function listRecentWorkouts(db: SQLiteDatabase) {
+  return db.getAllAsync<Workout>(
+    "SELECT w.id, w.name, COUNT(we.id) AS exercise_count FROM workouts w LEFT JOIN workout_exercises we ON we.workout_id=w.id GROUP BY w.id ORDER BY w.created_at DESC LIMIT 3",
+  );
 }
 export async function replaceSessionExercise(
   db: SQLiteDatabase,
