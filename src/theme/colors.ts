@@ -13,6 +13,7 @@ export const colors = {
   danger: "#FF5C6C",
   overlay: "#00000099",
   overlayStrong: "#00000088",
+  fabShadowColor: "#000",
 } as const;
 
 export const spacing = {
