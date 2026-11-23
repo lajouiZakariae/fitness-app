@@ -61,7 +61,7 @@ export default function WorkoutSessionScreen() {
     <View style={[styles.root, { paddingTop: spacing.sm + insets.top }]}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backText}>ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹</Text>
+          <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
         </Pressable>
         <View style={styles.headerTextContainer}>
           <View style={styles.headerText}>
@@ -97,9 +97,7 @@ export default function WorkoutSessionScreen() {
           {actions.timerPhase === "error" ? actions.timerError : undefined}
         </InlineError>
         {actions.timerPhase === "loading" ? (
-          <Text style={styles.secondary}>
-            Updating rest timerÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
-          </Text>
+          <Text style={styles.secondary}>Updating rest timer…</Text>
         ) : null}
         {actions.timerPhase === "error" ? (
           <Button
@@ -181,7 +179,7 @@ export default function WorkoutSessionScreen() {
                   onBlur={() => {
                     void actions.saveWeight(set.id, Boolean(set.completed));
                   }}
-                  placeholder="ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
+                  placeholder="—"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="decimal-pad"
                   style={styles.weightInput}
@@ -204,7 +202,7 @@ export default function WorkoutSessionScreen() {
                   ]}
                 >
                   <Text style={styles.checkmark}>
-                    {set.completed ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“" : ""}
+                    {set.completed ? "✓" : ""}
                   </Text>
                 </Pressable>
               </View>
@@ -235,7 +233,6 @@ export default function WorkoutSessionScreen() {
         ]}
       >
         <Ionicons name="add" size={24} color={colors.textOnPrimary} />
-        <Text style={styles.fabText}>Add exercise</Text>
       </Pressable>
       {session.rest_started_at && actions.timerRemaining > 0 ? (
         <View style={styles.timerDock}>
@@ -297,11 +294,7 @@ export default function WorkoutSessionScreen() {
                 onPress={() => setRemoveExerciseTarget(null)}
               />
               <Button
-                title={
-                  actions.removeExercisePending
-                    ? "RemovingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦"
-                    : "Remove"
-                }
+                title={actions.removeExercisePending ? "Removing..." : "Remove"}
                 variant="danger"
                 disabled={actions.removeExercisePending}
                 onPress={() => void confirmRemoveExercise()}
@@ -331,7 +324,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   back: { width: 48, height: 48, justifyContent: "center" },
-  backText: { color: colors.textPrimary, fontSize: 38 },
   headerTextContainer: { flex: 1, flexDirection: "row" },
   headerText: { flex: 1 },
   title: {
