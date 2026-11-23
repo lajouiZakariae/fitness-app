@@ -104,6 +104,8 @@ export default function WorkoutSessionScreen() {
           <WorkoutSessionExerciseCard
             key={exercise.id}
             exercise={exercise}
+            session={session}
+            actions={actions}
             setRemoveExerciseTarget={setRemoveExerciseTarget}
           />
         ))}
