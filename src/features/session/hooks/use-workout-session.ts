@@ -12,9 +12,10 @@ import {
   type Session,
 } from "@/db/queries";
 import { useSessionStore } from "@/store/session-store";
+import { useRestTimer } from "@/features/session/hooks/use-rest-timer";
 import { router, useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert } from "react-native";
 
 type Phase = "loading" | "error" | "success";
@@ -27,12 +28,9 @@ export function useWorkoutSession(sessionId: number) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [timerError, setTimerError] = useState("");
-  const [timerPhase, setTimerPhase] = useState<Phase>("success");
   const [weights, setWeights] = useState<Record<number, string>>({});
   const [reps, setReps] = useState<Record<number, string>>({});
   const [removeExercisePending, setRemoveExercisePending] = useState(false);
-  const [now, setNow] = useState(0);
   const [retryKey, setRetryKey] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading session...");
   const setActiveSessionId = useSessionStore(
@@ -67,6 +65,8 @@ export function useWorkoutSession(sessionId: number) {
     },
     [db, sessionId, setActiveSessionId],
   );
+
+  const restTimer = useRestTimer({ sessionId, session, refresh });
 
   useFocusEffect(
     useCallback(() => {
@@ -105,10 +105,6 @@ export function useWorkoutSession(sessionId: number) {
     }, [refresh, retryKey, validSessionId]),
   );
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, []);
   const total = useMemo(
     () =>
       session?.exercises.reduce(
@@ -126,45 +122,6 @@ export function useWorkoutSession(sessionId: number) {
       ) ?? 0,
     [session],
   );
-  const timerRemaining = session?.rest_started_at
-    ? Math.min(
-        session.rest_duration_seconds,
-        Math.max(
-          0,
-          session.rest_duration_seconds -
-            Math.floor((now - Date.parse(session.rest_started_at)) / 1000),
-        ),
-      )
-    : 0;
-
-  const clearExpiredTimer = useCallback(
-    async (isCancelled: () => boolean = () => false) => {
-      if (isCancelled()) return;
-      setTimerPhase("loading");
-      setTimerError("");
-      try {
-        await clearRestTimer(db, sessionId);
-        await refresh(isCancelled);
-        if (!isCancelled()) setTimerPhase("success");
-      } catch (error) {
-        console.error("Could not clear the expired rest timer.", error);
-        if (!isCancelled()) {
-          setTimerError("Could not update the rest timer.");
-          setTimerPhase("error");
-        }
-      }
-    },
-    [db, refresh, sessionId],
-  );
-  useEffect(() => {
-    if (!session?.rest_started_at || timerRemaining !== 0) return;
-    let cancelled = false;
-    void Promise.resolve().then(() => clearExpiredTimer(() => cancelled));
-    return () => {
-      cancelled = true;
-    };
-  }, [clearExpiredTimer, session, timerRemaining]);
-
   const toggleSet = useCallback(
     async (setId: number, currentCompleted: boolean, rest: number) => {
       const raw = weights[setId]?.trim() ?? "";
@@ -344,14 +301,14 @@ export function useWorkoutSession(sessionId: number) {
 
   const actions = {
     actionError,
-    timerError,
-    timerPhase,
+    timerError: restTimer.timerError,
+    timerPhase: restTimer.timerPhase,
     loadingMessage,
     loadError,
     validSessionId,
     total,
     completed,
-    timerRemaining,
+    timerRemaining: restTimer.timerRemaining,
     weights,
     reps,
     removeExercisePending,
@@ -361,7 +318,7 @@ export function useWorkoutSession(sessionId: number) {
       setReps((current) => ({ ...current, [setId]: value })),
     retry: () => setRetryKey((key) => key + 1),
     refresh,
-    clearExpiredTimer,
+    clearExpiredTimer: restTimer.clearExpiredTimer,
     toggleSet,
     saveWeight,
     saveReps,

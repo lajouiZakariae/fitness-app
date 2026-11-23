@@ -4,9 +4,11 @@ import { Button, Card, InlineError, sharedStyles } from "@/components/ui";
 import { ErrorWorkoutSession } from "@/features/session/components/error-workout-session";
 import { LoadingWorkoutSession } from "@/features/session/components/loading-workout-session";
 import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
+import RemoveExerciseModal from "@/features/session/components/remove-exercise-modal";
 import { SessionExerciseDropdownActions } from "@/features/session/components/session-exercise-dropdown-actions";
 import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
+import { SessionExercise } from "@/features/session/types";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useKeepAwake } from "expo-keep-awake";
@@ -14,7 +16,6 @@ import type { ErrorBoundaryProps } from "expo-router";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,9 +35,8 @@ export default function WorkoutSessionScreen() {
   const sessionId = Number(rawId);
   const { session, phase, actions } = useWorkoutSession(sessionId);
   const insets = useSafeAreaInsets();
-  const [removeExerciseTarget, setRemoveExerciseTarget] = useState<
-    NonNullable<typeof session>["exercises"][number] | null
-  >(null);
+  const [removeExerciseTarget, setRemoveExerciseTarget] =
+    useState<SessionExercise>(null);
 
   const confirmRemoveExercise = async () => {
     if (await actions.removeExercise(removeExerciseTarget))
@@ -265,38 +265,12 @@ export default function WorkoutSessionScreen() {
           disabled={session.status !== "in_progress"}
         />
       </View>
-      <Modal
-        visible={removeExerciseTarget !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!actions.removeExercisePending) setRemoveExerciseTarget(null);
-        }}
-      >
-        <View style={styles.dialogShade}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Remove exercise?</Text>
-            <Text style={styles.secondary}>
-              Remove {removeExerciseTarget?.exercise_name ?? "this exercise"}{" "}
-              and its sets from this workout session?
-            </Text>
-            <View style={styles.dialogActions}>
-              <Button
-                title="Cancel"
-                variant="secondary"
-                disabled={actions.removeExercisePending}
-                onPress={() => setRemoveExerciseTarget(null)}
-              />
-              <Button
-                title={actions.removeExercisePending ? "Removing..." : "Remove"}
-                variant="danger"
-                disabled={actions.removeExercisePending}
-                onPress={() => void confirmRemoveExercise()}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <RemoveExerciseModal
+        confirmRemoveExercise={confirmRemoveExercise}
+        removeExercisePending={actions.removeExercisePending}
+        removeExerciseTarget={removeExerciseTarget}
+        setRemoveExerciseTarget={setRemoveExerciseTarget}
+      />
     </View>
   );
 }
@@ -455,22 +429,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
   },
-  dialogShade: {
-    flex: 1,
-    justifyContent: "center",
-    padding: spacing.lg,
-    backgroundColor: colors.overlay,
-  },
-  dialog: {
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceElevated,
-  },
-  dialogTitle: {
-    color: colors.textPrimary,
-    fontSize: typography.heading,
-    fontWeight: "800",
-  },
-  dialogActions: { flexDirection: "row", gap: spacing.sm },
 });
