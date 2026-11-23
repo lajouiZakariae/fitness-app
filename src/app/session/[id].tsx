@@ -5,6 +5,7 @@ import { ErrorWorkoutSession } from "@/features/session/components/error-workout
 import { LoadingWorkoutSession } from "@/features/session/components/loading-workout-session";
 import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
 import { SessionExerciseDropdownActions } from "@/features/session/components/session-exercise-dropdown-actions";
+import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -81,16 +82,9 @@ export default function WorkoutSessionScreen() {
           />
         </View>
       </View>
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progress,
-            {
-              width: `${actions.total ? (actions.completed / actions.total) * 100 : 0}%`,
-            },
-          ]}
-        />
-      </View>
+
+      <WorkoutProgressBar completed={actions.completed} total={actions.total} />
+
       <View style={{ paddingHorizontal: spacing.lg }}>
         <InlineError>{actions.actionError}</InlineError>
         <InlineError>
@@ -336,16 +330,6 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
     marginTop: 2,
   },
-  progressTrack: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    height: 8,
-    borderRadius: radius.pill,
-    overflow: "hidden",
-    backgroundColor: colors.primaryMuted,
-  },
-  progress: { height: "100%", backgroundColor: colors.primary },
   scroll: {
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
