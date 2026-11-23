@@ -1,28 +1,18 @@
 import { IconButton } from "@/components/icon-button";
 import { RouteError } from "@/components/route-error";
 import { Button, Card, InlineError, sharedStyles } from "@/components/ui";
-import {
-  addSessionSet,
-  clearRestTimer,
-  completeSession,
-  deleteSession,
-  getSession,
-  removeSessionExercise,
-  removeSessionSet,
-  setRestTimer,
-  updateSet,
-  updateSetReps,
-  type Session,
-} from "@/db/queries";
-import { useSessionStore } from "@/store/session-store";
+import { ErrorWorkoutSession } from "@/features/session/components/error-workout-session";
+import { LoadingWorkoutSession } from "@/features/session/components/loading-workout-session";
+import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
+import { SessionExerciseDropdownActions } from "@/features/session/components/session-exercise-dropdown-actions";
+import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
 import { colors, radius, spacing, typography } from "@/theme/colors";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useKeepAwake } from "expo-keep-awake";
 import type { ErrorBoundaryProps } from "expo-router";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useSQLiteContext } from "expo-sqlite";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -39,343 +29,39 @@ export function ErrorBoundary(props: ErrorBoundaryProps) {
 
 export default function WorkoutSessionScreen() {
   useKeepAwake();
-  const db = useSQLiteContext();
   const { id: rawId } = useLocalSearchParams<{ id: string }>();
   const sessionId = Number(rawId);
-  const validSessionId =
-    !isNaN(sessionId) && Number.isInteger(sessionId) && sessionId > 0;
+  const { session, phase, actions } = useWorkoutSession(sessionId);
   const insets = useSafeAreaInsets();
-  const [session, setSession] = useState<Session | null>(null);
-  const [phase, setPhase] = useState<"loading" | "error" | "success">(
-    "loading",
-  );
-  const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
-  const [timerError, setTimerError] = useState("");
-  const [timerPhase, setTimerPhase] = useState<"loading" | "error" | "success">(
-    "success",
-  );
-  const [loadingMessage, setLoadingMessage] = useState("Loading session…");
-  const [retryKey, setRetryKey] = useState(0);
-  const [now, setNow] = useState(0);
-  const [weights, setWeights] = useState<Record<number, string>>({});
-  const [reps, setReps] = useState<Record<number, string>>({});
   const [removeExerciseTarget, setRemoveExerciseTarget] = useState<
-    Session["exercises"][number] | null
+    NonNullable<typeof session>["exercises"][number] | null
   >(null);
-  const [removeExercisePending, setRemoveExercisePending] = useState(false);
-  const setActiveSessionId = useSessionStore(
-    (state) => state.setActiveSessionId,
-  );
-  const refresh = useCallback(
-    async (isCancelled: () => boolean = () => false) => {
-      const next = await getSession(db, sessionId);
-      if (isCancelled()) return;
-      setSession(next);
-      if (next) {
-        setReps((current) => {
-          const updated = { ...current };
-          for (const exercise of next.exercises)
-            for (const set of exercise.sets)
-              if (updated[set.id] === undefined)
-                updated[set.id] = String(set.target_reps);
-          return updated;
-        });
-        setWeights((current) => {
-          const updated = { ...current };
-          for (const exercise of next.exercises)
-            for (const set of exercise.sets)
-              if (updated[set.id] === undefined)
-                updated[set.id] = set.weight == null ? "" : String(set.weight);
-          return updated;
-        });
-        setActiveSessionId(next.status === "in_progress" ? next.id : null);
-      } else setActiveSessionId(null);
-      return next;
-    },
-    [db, sessionId, setActiveSessionId],
-  );
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      setPhase("loading");
-      setLoadingMessage(
-        retryKey ? "Retrying session load…" : "Loading session…",
-      );
-      setLoadError("");
-      if (!validSessionId) {
-        setLoadError("Invalid session ID.");
-        setPhase("error");
-        return () => {
-          cancelled = true;
-        };
-      }
-      const load = async () => {
-        try {
-          const next = await refresh(() => cancelled);
-          if (!cancelled) {
-            if (next) setPhase("success");
-            else {
-              setLoadError("Session not found.");
-              setPhase("error");
-            }
-          }
-        } catch (error) {
-          console.error("Could not load the session.", error);
-          if (!cancelled) {
-            setLoadError("Could not load this workout session.");
-            setPhase("error");
-          }
-        }
-      };
-      void load();
-      return () => {
-        cancelled = true;
-      };
-    }, [refresh, retryKey, validSessionId]),
-  );
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, []);
-  const total = useMemo(
-    () =>
-      session?.exercises.reduce(
-        (sum, exercise) => sum + exercise.sets.length,
-        0,
-      ) ?? 0,
-    [session],
-  );
-  const completed = useMemo(
-    () =>
-      session?.exercises.reduce(
-        (sum, exercise) =>
-          sum + exercise.sets.filter((set) => set.completed).length,
-        0,
-      ) ?? 0,
-    [session],
-  );
-  const timerRemaining = session?.rest_started_at
-    ? Math.min(
-        session.rest_duration_seconds,
-        Math.max(
-          0,
-          session.rest_duration_seconds -
-            Math.floor((now - Date.parse(session.rest_started_at)) / 1000),
-        ),
-      )
-    : 0;
-  const clearExpiredTimer = useCallback(
-    async (isCancelled: () => boolean = () => false) => {
-      if (isCancelled()) return;
-      setTimerPhase("loading");
-      setTimerError("");
-      try {
-        await clearRestTimer(db, sessionId);
-        await refresh(isCancelled);
-        if (!isCancelled()) setTimerPhase("success");
-      } catch (error) {
-        console.error("Could not clear the expired rest timer.", error);
-        if (!isCancelled()) {
-          setTimerError("Could not update the rest timer.");
-          setTimerPhase("error");
-        }
-      }
-    },
-    [db, refresh, sessionId],
-  );
-  useEffect(() => {
-    if (session?.rest_started_at && timerRemaining === 0) {
-      let cancelled = false;
-      void Promise.resolve().then(() => clearExpiredTimer(() => cancelled));
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [clearExpiredTimer, session, timerRemaining]);
-  const toggleSet = async (
-    setId: number,
-    currentCompleted: boolean,
-    rest: number,
-  ) => {
-    const raw = weights[setId]?.trim() ?? "";
-    const value = raw ? Number(raw.replace(",", ".")) : null;
-    if (value !== null && (!Number.isFinite(value) || value < 0)) {
-      Alert.alert("Check the weight", "Enter a valid weight in kilograms.");
-      return;
-    }
-    const nextCompleted = !currentCompleted;
-    setActionError("");
-    try {
-      await updateSet(db, setId, nextCompleted, value);
-      if (nextCompleted && rest > 0) await setRestTimer(db, sessionId, rest);
-      else if (!nextCompleted && session?.rest_started_at)
-        await clearRestTimer(db, sessionId);
-      await refresh();
-    } catch (error) {
-      console.error("Could not update the set.", error);
-      setActionError("Could not update this set. Please try again.");
-    }
-  };
-  const save = async () => {
-    setActionError("");
-    try {
-      await completeSession(db, sessionId);
-      setActiveSessionId(null);
-      router.replace("/(tabs)/home");
-    } catch (error) {
-      console.error("Could not finish the workout.", error);
-      setActionError(
-        "Could not finish the workout. Your session is still saved.",
-      );
-    }
-  };
-  const finish = () => {
-    if (completed < total)
-      Alert.alert(
-        "Finish workout?",
-        `${total - completed} set${total - completed === 1 ? "" : "s"} are unfinished. They will be saved as incomplete.`,
-        [
-          { text: "Keep training", style: "cancel" },
-          {
-            text: "Finish workout",
-            onPress: () => {
-              void save();
-            },
-          },
-        ],
-      );
-    else void save();
-  };
-  const saveWeight = async (setId: number, completedValue: boolean) => {
-    const raw = weights[setId]?.trim() ?? "";
-    const value = raw ? Number(raw.replace(",", ".")) : null;
-    if (value !== null && (!Number.isFinite(value) || value < 0)) {
-      setActionError("Enter a valid weight in kilograms.");
-      return;
-    }
-    setActionError("");
-    try {
-      await updateSet(db, setId, completedValue, value);
-    } catch (error) {
-      console.error("Could not save the set weight.", error);
-      setActionError("Could not save the weight. Please try again.");
-    }
-  };
 
-  const addSet = async (
-    exercise: Session["exercises"][number],
-    weight: number | null,
-  ) => {
-    setActionError("");
-    try {
-      await addSessionSet(db, exercise, weight);
-      await refresh();
-    } catch (error) {
-      console.error(`Could not add a session set.`, error);
-      setActionError(`Could not add a set. Please try again.`);
-    }
-  };
-
-  const removeSet = async (exercise: Session["exercises"][number]) => {
-    setActionError("");
-    try {
-      await removeSessionSet(db, exercise);
-      await refresh();
-    } catch (error) {
-      console.error(`Could not remove a session set.`, error);
-      setActionError(`Could not remove a set. Please try again.`);
-    }
-  };
   const confirmRemoveExercise = async () => {
-    if (!session || !removeExerciseTarget || removeExercisePending) return;
-    setRemoveExercisePending(true);
-    setActionError("");
-    try {
-      await removeSessionExercise(db, session, removeExerciseTarget.id);
+    if (await actions.removeExercise(removeExerciseTarget))
       setRemoveExerciseTarget(null);
-      await refresh();
-    } catch (error) {
-      console.error("Could not remove the session exercise.", error);
-      setActionError("Could not remove this exercise. Please try again.");
-    } finally {
-      setRemoveExercisePending(false);
-    }
   };
-  const confirmDeleteSession = () => {
-    Alert.alert(
-      "Delete workout session?",
-      "This will permanently delete this session and all of its recorded sets.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete session",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setActionError("");
-              try {
-                await deleteSession(db, sessionId);
-                setActiveSessionId(null);
-                router.replace("/(tabs)/home");
-              } catch (error) {
-                console.error("Could not delete the workout session.", error);
-                setActionError(
-                  "Could not delete this workout session. Please try again.",
-                );
-              }
-            })();
-          },
-        },
-      ],
-    );
-  };
-  const skipRest = async () => {
-    setActionError("");
-    try {
-      await clearRestTimer(db, sessionId);
-      await refresh();
-    } catch (error) {
-      console.error("Could not skip the rest timer.", error);
-      setActionError("Could not skip the rest timer. Please try again.");
-    }
-  };
+
   if (phase === "loading")
-    return (
-      <View style={styles.center}>
-        <Text style={styles.secondary}>{loadingMessage}</Text>
-      </View>
-    );
+    return <LoadingWorkoutSession message={actions.loadingMessage} />;
+
   if (phase === "error")
     return (
-      <View style={styles.center}>
-        <Text style={styles.title}>Session unavailable</Text>
-        <Text style={styles.secondary}>{loadError}</Text>
-        {validSessionId ? (
-          <Button title="Retry" onPress={() => setRetryKey((key) => key + 1)} />
-        ) : null}
-        <Button
-          title="Go home"
-          variant="secondary"
-          onPress={() => router.replace("/(tabs)/home")}
-        />
-      </View>
+      <ErrorWorkoutSession
+        loadError={actions.loadError}
+        goHome={actions.goHome}
+        retry={actions.retry}
+        validSessionId={actions.validSessionId}
+      />
     );
-  if (!session)
-    return (
-      <View style={styles.center}>
-        <Text style={styles.title}>Session unavailable</Text>
-        <Button
-          title="Go home"
-          onPress={() => router.replace("/(tabs)/home")}
-        />
-      </View>
-    );
+
+  if (!session) return <NotFoundWorkoutSession goHome={actions.goHome} />;
+
   return (
     <View style={[styles.root, { paddingTop: spacing.sm + insets.top }]}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backText}>‹</Text>
+          <Text style={styles.backText}>ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¹</Text>
         </Pressable>
         <View style={styles.headerTextContainer}>
           <View style={styles.headerText}>
@@ -384,14 +70,14 @@ export default function WorkoutSessionScreen() {
             </Text>
 
             <Text style={styles.secondary}>
-              {completed} / {total} sets completed
+              {actions.completed} / {actions.total} sets completed
             </Text>
           </View>
           <IconButton
             icon="trash-outline"
             label="Delete workout session"
             danger
-            onPress={confirmDeleteSession}
+            onPress={actions.deleteSession}
           />
         </View>
       </View>
@@ -399,24 +85,28 @@ export default function WorkoutSessionScreen() {
         <View
           style={[
             styles.progress,
-            { width: `${total ? (completed / total) * 100 : 0}%` },
+            {
+              width: `${actions.total ? (actions.completed / actions.total) * 100 : 0}%`,
+            },
           ]}
         />
       </View>
       <View style={{ paddingHorizontal: spacing.lg }}>
-        <InlineError>{actionError}</InlineError>
+        <InlineError>{actions.actionError}</InlineError>
         <InlineError>
-          {timerPhase === "error" ? timerError : undefined}
+          {actions.timerPhase === "error" ? actions.timerError : undefined}
         </InlineError>
-        {timerPhase === "loading" ? (
-          <Text style={styles.secondary}>Updating rest timer…</Text>
+        {actions.timerPhase === "loading" ? (
+          <Text style={styles.secondary}>
+            Updating rest timerÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦
+          </Text>
         ) : null}
-        {timerPhase === "error" ? (
+        {actions.timerPhase === "error" ? (
           <Button
             title="Retry timer update"
             variant="secondary"
             onPress={() => {
-              void clearExpiredTimer();
+              void actions.clearExpiredTimer();
             }}
           />
         ) : null}
@@ -434,53 +124,19 @@ export default function WorkoutSessionScreen() {
                 </Text>
                 <Text style={styles.secondary}>{exercise.muscle}</Text>
               </View>
-              <View style={sharedStyles.row}>
-                <IconButton
-                  icon="swap-horizontal"
-                  label={`Change ${exercise.exercise_name}`}
-                  disabled={session.status !== "in_progress"}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/session/add-exercise",
-                      params: {
-                        sessionId: String(session.id),
-                        replaceId: String(exercise.id),
-                      },
-                    })
-                  }
-                />
-                <IconButton
-                  icon="remove"
-                  label="Remove a set"
-                  disabled={
-                    session.status !== "in_progress" ||
-                    exercise.sets.length === 0
-                  }
-                  onPress={() => {
-                    void removeSet(exercise);
-                  }}
-                />
-                <IconButton
-                  icon="add"
-                  label="Add a set"
-                  disabled={session.status !== "in_progress"}
-                  onPress={() => {
-                    const lastSet =
-                      exercise.sets.length > 0
-                        ? exercise.sets.at(exercise.sets.length - 1)
-                        : null;
-
-                    void addSet(exercise, lastSet?.weight ?? null);
-                  }}
-                />
-                <IconButton
-                  icon="trash-outline"
-                  label={`Remove ${exercise.exercise_name} from session`}
-                  danger
-                  disabled={session.status !== "in_progress"}
-                  onPress={() => setRemoveExerciseTarget(exercise)}
-                />
-              </View>
+              <SessionExerciseDropdownActions
+                exercise={exercise}
+                sessionId={session.id}
+                disabled={session.status !== "in_progress"}
+                onAddSet={(target) => {
+                  void actions.addSet(
+                    target,
+                    target.sets.at(-1)?.weight ?? null,
+                  );
+                }}
+                onRemoveSet={(target) => void actions.removeSet(target)}
+                onRemoveExercise={setRemoveExerciseTarget}
+              />
             </View>
             <View style={styles.setHeader}>
               <Text style={[styles.tableHead, styles.numberCol]}>SET</Text>
@@ -503,41 +159,29 @@ export default function WorkoutSessionScreen() {
                 </Text>
                 <TextInput
                   accessibilityLabel={`Target reps for set ${set.set_number}`}
-                  value={reps[set.id] ?? String(set.target_reps)}
+                  value={actions.reps[set.id] ?? String(set.target_reps)}
                   keyboardType="number-pad"
                   editable={session.status === "in_progress"}
-                  onChangeText={(value) =>
-                    setReps((current) => ({ ...current, [set.id]: value }))
-                  }
+                  onChangeText={(value) => actions.setReps(set.id, value)}
                   onBlur={() => {
-                    const nextReps = Number(reps[set.id]);
-                    if (
-                      Number.isInteger(nextReps) &&
-                      nextReps > 0 &&
-                      nextReps !== set.target_reps
-                    ) {
-                      void updateSetReps(db, set.id, nextReps)
-                        .then(() => refresh())
-                        .catch(() => setActionError("Could not save reps."));
-                    } else if (!Number.isInteger(nextReps) || nextReps < 1) {
-                      setReps((current) => ({
-                        ...current,
-                        [set.id]: String(set.target_reps),
-                      }));
-                    }
+                    actions.saveReps(
+                      set.id,
+                      actions.reps[set.id] ?? String(set.target_reps),
+                      set.target_reps,
+                    );
                   }}
                   style={[styles.weightInput, styles.repsCol]}
                 />
                 <TextInput
                   accessibilityLabel={`Weight for set ${set.set_number}`}
-                  value={weights[set.id] ?? ""}
+                  value={actions.weights[set.id] ?? ""}
                   onChangeText={(value) => {
-                    setWeights((current) => ({ ...current, [set.id]: value }));
+                    actions.setWeight(set.id, value);
                   }}
                   onBlur={() => {
-                    void saveWeight(set.id, Boolean(set.completed));
+                    void actions.saveWeight(set.id, Boolean(set.completed));
                   }}
-                  placeholder="—"
+                  placeholder="ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="decimal-pad"
                   style={styles.weightInput}
@@ -548,7 +192,7 @@ export default function WorkoutSessionScreen() {
                   accessibilityState={{ checked: Boolean(set.completed) }}
                   disabled={session.status !== "in_progress"}
                   onPress={() => {
-                    void toggleSet(
+                    void actions.toggleSet(
                       set.id,
                       Boolean(set.completed),
                       exercise.rest_seconds,
@@ -560,36 +204,50 @@ export default function WorkoutSessionScreen() {
                   ]}
                 >
                   <Text style={styles.checkmark}>
-                    {set.completed ? "✓" : ""}
+                    {set.completed ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“" : ""}
                   </Text>
                 </Pressable>
               </View>
             ))}
           </Card>
         ))}
-        <Button
-          title="Add exercise"
-          variant="secondary"
-          disabled={session.status !== "in_progress"}
-          onPress={() =>
-            router.push({
-              pathname: "/session/add-exercise",
-              params: { sessionId: String(session.id) },
-            })
-          }
-        />
+        <View style={{ height: 72 }} />
       </ScrollView>
-      {session.rest_started_at && timerRemaining > 0 ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Add exercise"
+        disabled={session.status !== "in_progress"}
+        onPress={() =>
+          router.push({
+            pathname: "/session/add-exercise",
+            params: { sessionId: String(session.id) },
+          })
+        }
+        style={[
+          styles.fab,
+          {
+            bottom:
+              90 +
+              insets.bottom +
+              (session.rest_started_at && actions.timerRemaining > 0 ? 68 : 0),
+          },
+          session.status !== "in_progress" ? styles.fabDisabled : null,
+        ]}
+      >
+        <Ionicons name="add" size={24} color={colors.textOnPrimary} />
+        <Text style={styles.fabText}>Add exercise</Text>
+      </Pressable>
+      {session.rest_started_at && actions.timerRemaining > 0 ? (
         <View style={styles.timerDock}>
           <View style={sharedStyles.spread}>
             <Text style={styles.timerLabel}>REST</Text>
             <Text style={styles.timerValue}>
-              {Math.floor(timerRemaining / 60)}:
-              {String(timerRemaining % 60).padStart(2, "0")}
+              {Math.floor(actions.timerRemaining / 60)}:
+              {String(actions.timerRemaining % 60).padStart(2, "0")}
             </Text>
             <Pressable
               onPress={() => {
-                void skipRest();
+                void actions.skipRest();
               }}
             >
               <Text style={styles.skip}>Skip</Text>
@@ -600,7 +258,7 @@ export default function WorkoutSessionScreen() {
               style={[
                 styles.timerProgress,
                 {
-                  width: `${Math.max(0, Math.min(100, (timerRemaining / session.rest_duration_seconds) * 100))}%`,
+                  width: `${Math.max(0, Math.min(100, (actions.timerRemaining / session.rest_duration_seconds) * 100))}%`,
                 },
               ]}
             />
@@ -612,7 +270,7 @@ export default function WorkoutSessionScreen() {
       >
         <Button
           title="Workout is completed"
-          onPress={finish}
+          onPress={actions.finish}
           disabled={session.status !== "in_progress"}
         />
       </View>
@@ -621,7 +279,7 @@ export default function WorkoutSessionScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!removeExercisePending) setRemoveExerciseTarget(null);
+          if (!actions.removeExercisePending) setRemoveExerciseTarget(null);
         }}
       >
         <View style={styles.dialogShade}>
@@ -635,13 +293,17 @@ export default function WorkoutSessionScreen() {
               <Button
                 title="Cancel"
                 variant="secondary"
-                disabled={removeExercisePending}
+                disabled={actions.removeExercisePending}
                 onPress={() => setRemoveExerciseTarget(null)}
               />
               <Button
-                title={removeExercisePending ? "Removing…" : "Remove"}
+                title={
+                  actions.removeExercisePending
+                    ? "RemovingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦"
+                    : "Remove"
+                }
                 variant="danger"
-                disabled={removeExercisePending}
+                disabled={actions.removeExercisePending}
                 onPress={() => void confirmRemoveExercise()}
               />
             </View>
@@ -787,6 +449,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryMuted,
   },
   timerProgress: { height: "100%", backgroundColor: colors.primary },
+  fab: {
+    position: "absolute",
+    right: spacing.lg,
+    zIndex: 5,
+    height: 56,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  fabDisabled: { opacity: 0.5 },
+  fabText: {
+    color: colors.textOnPrimary,
+    fontSize: typography.body,
+    fontWeight: "800",
+  },
   footer: {
     padding: spacing.lg,
     paddingBottom: spacing.md,

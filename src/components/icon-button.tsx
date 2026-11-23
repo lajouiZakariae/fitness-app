@@ -8,7 +8,8 @@ type ActionIcon =
   | "trash-outline"
   | "arrow-up"
   | "arrow-down"
-  | "swap-horizontal";
+  | "swap-horizontal"
+  | "ellipsis-vertical";
 
 export function IconButton({
   icon,
