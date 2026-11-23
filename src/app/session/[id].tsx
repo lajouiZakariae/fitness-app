@@ -1,28 +1,21 @@
 import { IconButton } from "@/components/icon-button";
 import { RouteError } from "@/components/route-error";
-import { Button, Card, InlineError, sharedStyles } from "@/components/ui";
+import { Button, InlineError, sharedStyles } from "@/components/ui";
+import { SessionExercise } from "@/db/queries";
 import { ErrorWorkoutSession } from "@/features/session/components/error-workout-session";
 import { LoadingWorkoutSession } from "@/features/session/components/loading-workout-session";
 import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
 import RemoveExerciseModal from "@/features/session/components/remove-exercise-modal";
-import { SessionExerciseDropdownActions } from "@/features/session/components/session-exercise-dropdown-actions";
 import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
+import { WorkoutSessionExerciseCard } from "@/features/session/components/workout-session-exercise-card";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
-import { SessionExercise } from "@/features/session/types";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useKeepAwake } from "expo-keep-awake";
 import type { ErrorBoundaryProps } from "expo-router";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export function ErrorBoundary(props: ErrorBoundaryProps) {
@@ -36,7 +29,7 @@ export default function WorkoutSessionScreen() {
   const { session, phase, actions } = useWorkoutSession(sessionId);
   const insets = useSafeAreaInsets();
   const [removeExerciseTarget, setRemoveExerciseTarget] =
-    useState<SessionExercise>(null);
+    useState<SessionExercise | null>(null);
 
   const confirmRemoveExercise = async () => {
     if (await actions.removeExercise(removeExerciseTarget))
@@ -108,100 +101,11 @@ export default function WorkoutSessionScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {session.exercises.map((exercise) => (
-          <Card key={exercise.id}>
-            <View style={sharedStyles.spread}>
-              <View>
-                <Text style={styles.exerciseName}>
-                  {exercise.exercise_name}
-                </Text>
-                <Text style={styles.secondary}>{exercise.muscle}</Text>
-              </View>
-              <SessionExerciseDropdownActions
-                exercise={exercise}
-                sessionId={session.id}
-                disabled={session.status !== "in_progress"}
-                onAddSet={(target) => {
-                  void actions.addSet(
-                    target,
-                    target.sets.at(-1)?.weight ?? null,
-                  );
-                }}
-                onRemoveSet={(target) => void actions.removeSet(target)}
-                onRemoveExercise={setRemoveExerciseTarget}
-              />
-            </View>
-            <View style={styles.setHeader}>
-              <Text style={[styles.tableHead, styles.numberCol]}>SET</Text>
-              <Text style={[styles.tableHead, styles.repsCol]}>TARGET</Text>
-              <Text style={[styles.tableHead, styles.weightCol]}>
-                WEIGHT (KG)
-              </Text>
-              <Text style={[styles.tableHead, styles.checkCol]}>DONE</Text>
-            </View>
-            {exercise.sets.map((set) => (
-              <View
-                key={set.id}
-                style={[
-                  styles.setRow,
-                  set.completed ? styles.completedRow : null,
-                ]}
-              >
-                <Text style={[styles.value, styles.numberCol]}>
-                  {set.set_number}
-                </Text>
-                <TextInput
-                  accessibilityLabel={`Target reps for set ${set.set_number}`}
-                  value={actions.reps[set.id] ?? String(set.target_reps)}
-                  keyboardType="number-pad"
-                  editable={session.status === "in_progress"}
-                  onChangeText={(value) => actions.setReps(set.id, value)}
-                  onBlur={() => {
-                    actions.saveReps(
-                      set.id,
-                      actions.reps[set.id] ?? String(set.target_reps),
-                      set.target_reps,
-                    );
-                  }}
-                  style={[styles.weightInput, styles.repsCol]}
-                />
-                <TextInput
-                  accessibilityLabel={`Weight for set ${set.set_number}`}
-                  value={actions.weights[set.id] ?? ""}
-                  onChangeText={(value) => {
-                    actions.setWeight(set.id, value);
-                  }}
-                  onBlur={() => {
-                    void actions.saveWeight(set.id, Boolean(set.completed));
-                  }}
-                  placeholder="—"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="decimal-pad"
-                  style={styles.weightInput}
-                  editable={session.status === "in_progress"}
-                />
-                <Pressable
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: Boolean(set.completed) }}
-                  disabled={session.status !== "in_progress"}
-                  onPress={() => {
-                    void actions.toggleSet(
-                      set.id,
-                      Boolean(set.completed),
-                      exercise.rest_seconds,
-                    );
-                  }}
-                  style={[
-                    styles.checkbox,
-                    set.completed ? styles.checked : null,
-                  ]}
-                >
-                  <Text style={styles.checkmark}>
-                    {set.completed ? "✓" : ""}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </Card>
+          <WorkoutSessionExerciseCard
+            key={exercise.id}
+            exercise={exercise}
+            setRemoveExerciseTarget={setRemoveExerciseTarget}
+          />
         ))}
         <View style={{ height: 72 }} />
       </ScrollView>

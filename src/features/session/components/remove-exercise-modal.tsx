@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui";
+import { SessionExercise } from "@/db/queries";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import { Dispatch, SetStateAction } from "react";
 import { Modal, StyleSheet, Text, View } from "react-native";
-import { SessionExercise } from "../types";
 
 export default function RemoveExerciseModal({
   removeExerciseTarget,
@@ -10,8 +10,8 @@ export default function RemoveExerciseModal({
   confirmRemoveExercise,
   removeExercisePending,
 }: {
-  removeExerciseTarget: SessionExercise;
-  setRemoveExerciseTarget: Dispatch<SetStateAction<SessionExercise>>;
+  removeExerciseTarget: SessionExercise | null;
+  setRemoveExerciseTarget: Dispatch<SetStateAction<SessionExercise | null>>;
   removeExercisePending: boolean;
   confirmRemoveExercise: () => Promise<void>;
 }) {
