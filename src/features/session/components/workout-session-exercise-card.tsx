@@ -1,9 +1,7 @@
 import { Card, sharedStyles } from "@/components/ui";
 import { Session, SessionExercise } from "@/db/queries";
 import { SessionExerciseDropdownActions } from "@/features/session/components/session-exercise-dropdown-actions";
-import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
 import { colors, radius, spacing, typography } from "@/theme/colors";
-import { useLocalSearchParams } from "expo-router";
 import { Dispatch, SetStateAction } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
@@ -11,17 +9,13 @@ export function WorkoutSessionExerciseCard({
   exercise,
   setRemoveExerciseTarget,
   session,
+  actions,
 }: {
   exercise: SessionExercise;
   setRemoveExerciseTarget: Dispatch<SetStateAction<SessionExercise | null>>;
   session: Session;
-
   actions: object;
 }) {
-  const { id: rawId } = useLocalSearchParams<{ id: string }>();
-  const sessionId = Number(rawId);
-  const { actions } = useWorkoutSession(sessionId);
-
   if (!session) throw new Error("a session is required");
 
   return (
