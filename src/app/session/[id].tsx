@@ -10,11 +10,12 @@ import RemoveExerciseModal from "@/features/session/components/remove-exercise-m
 import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
 import { WorkoutSessionExerciseCard } from "@/features/session/components/workout-session-exercise-card";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
+import { useWorkoutSessionParamId } from "@/features/session/hooks/use-workout-session-param-id";
 import { colors, fabHeight, radius, spacing, typography } from "@/theme/colors";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useKeepAwake } from "expo-keep-awake";
 import type { ErrorBoundaryProps } from "expo-router";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,10 +26,13 @@ export function ErrorBoundary(props: ErrorBoundaryProps) {
 
 export default function WorkoutSessionScreen() {
   useKeepAwake();
-  const { id: rawId } = useLocalSearchParams<{ id: string }>();
-  const sessionId = Number(rawId);
+
+  const sessionId = useWorkoutSessionParamId();
+
   const { session, phase, actions } = useWorkoutSession(sessionId);
+
   const insets = useSafeAreaInsets();
+
   const [removeExerciseTarget, setRemoveExerciseTarget] =
     useState<SessionExercise | null>(null);
 
@@ -97,6 +101,7 @@ export default function WorkoutSessionScreen() {
           />
         ) : null}
       </View>
+
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
@@ -146,6 +151,7 @@ export default function WorkoutSessionScreen() {
           </View>
         </View>
       ) : null}
+
       <View
         style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}
       >
@@ -155,6 +161,7 @@ export default function WorkoutSessionScreen() {
           disabled={session.status !== "in_progress"}
         />
       </View>
+
       <RemoveExerciseModal
         confirmRemoveExercise={confirmRemoveExercise}
         removeExercisePending={actions.removeExercisePending}
@@ -166,7 +173,6 @@ export default function WorkoutSessionScreen() {
 }
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.sm },
-
   header: {
     flexDirection: "row",
     alignItems: "center",

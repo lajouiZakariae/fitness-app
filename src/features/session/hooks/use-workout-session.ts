@@ -11,8 +11,8 @@ import {
   updateSetReps,
   type Session,
 } from "@/db/queries";
-import { useSessionStore } from "@/store/session-store";
 import { useRestTimer } from "@/features/session/hooks/use-rest-timer";
+import { useSessionStore } from "@/store/session-store";
 import { router, useFocusEffect } from "expo-router";
 import { useSQLiteContext } from "expo-sqlite";
 import { useCallback, useMemo, useState } from "react";
@@ -330,5 +330,6 @@ export function useWorkoutSession(sessionId: number) {
     skipRest,
     goHome,
   };
+
   return { session, phase, actions };
 }
