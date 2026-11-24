@@ -8,7 +8,7 @@ import { LoadingWorkoutSession } from "@/features/session/components/loading-wor
 import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
 import RemoveExerciseModal from "@/features/session/components/remove-exercise-modal";
 import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
-import { WorkoutSessionExerciseCard } from "@/features/session/components/workout-session-exercise-card";
+import { SessionExerciseListCard } from "@/features/session/components/session-exercise-list-card";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
 import { useWorkoutSessionParamId } from "@/features/session/hooks/use-workout-session-param-id";
 import { colors, fabHeight, radius, spacing, typography } from "@/theme/colors";
@@ -32,7 +32,6 @@ export default function WorkoutSessionScreen() {
   const { session, phase, actions } = useWorkoutSession(sessionId);
 
   const insets = useSafeAreaInsets();
-
   const [removeExerciseTarget, setRemoveExerciseTarget] =
     useState<SessionExercise | null>(null);
 
@@ -107,12 +106,22 @@ export default function WorkoutSessionScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {session.exercises.map((exercise) => (
-          <WorkoutSessionExerciseCard
+          <SessionExerciseListCard
             key={exercise.id}
             exercise={exercise}
-            session={session}
-            actions={actions}
-            setRemoveExerciseTarget={setRemoveExerciseTarget}
+            onChange={() =>
+              router.push({
+                pathname: "/session/add-exercise",
+                params: { sessionId: session.id, replaceId: exercise.id },
+              })
+            }
+            onOpen={() =>
+              router.push({
+                pathname: "/session/[id]/exercises/[exerciseId]",
+                params: { id: session.id, exerciseId: exercise.id },
+              })
+            }
+            onDelete={() => setRemoveExerciseTarget(exercise)}
           />
         ))}
         <View style={{ height: fabHeight }} />
@@ -168,6 +177,7 @@ export default function WorkoutSessionScreen() {
         removeExerciseTarget={removeExerciseTarget}
         setRemoveExerciseTarget={setRemoveExerciseTarget}
       />
+
     </View>
   );
 }

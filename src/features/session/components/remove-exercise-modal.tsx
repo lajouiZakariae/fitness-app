@@ -2,7 +2,7 @@ import { Button } from "@/components/ui";
 import { SessionExercise } from "@/db/queries";
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import { Dispatch, SetStateAction } from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export default function RemoveExerciseModal({
   removeExerciseTarget,
@@ -15,21 +15,19 @@ export default function RemoveExerciseModal({
   removeExercisePending: boolean;
   confirmRemoveExercise: () => Promise<void>;
 }) {
-  return (
-    <Modal
-      visible={removeExerciseTarget !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={() => {
-        if (!removeExercisePending) setRemoveExerciseTarget(null);
-      }}
-    >
-      <View style={styles.dialogShade}>
+  return removeExerciseTarget ? (
+      <View style={styles.dialogShade} accessibilityViewIsModal>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel removing exercise"
+          disabled={removeExercisePending}
+          onPress={() => setRemoveExerciseTarget(null)}
+          style={styles.backdrop}
+        />
         <View style={styles.dialog}>
           <Text style={styles.dialogTitle}>Remove exercise?</Text>
           <Text style={styles.secondary}>
-            Remove {removeExerciseTarget?.exercise_name ?? "this exercise"} and
-            its sets from this workout session?
+            Remove {removeExerciseTarget.exercise_name} and its sets from this workout session?
           </Text>
           <View style={styles.dialogActions}>
             <Button
@@ -47,8 +45,7 @@ export default function RemoveExerciseModal({
           </View>
         </View>
       </View>
-    </Modal>
-  );
+  ) : null;
 }
 
 const styles = StyleSheet.create({
@@ -58,11 +55,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   dialogShade: {
-    flex: 1,
+    ...StyleSheet.absoluteFill,
+    zIndex: 20,
     justifyContent: "center",
     padding: spacing.lg,
-    backgroundColor: colors.overlay,
   },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.overlay },
   dialog: {
     gap: spacing.md,
     padding: spacing.lg,
