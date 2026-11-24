@@ -37,8 +37,6 @@ export function useWorkoutSession(sessionId: number) {
     (state) => state.setActiveSessionId,
   );
 
-  console.log(reps);
-
   const refresh = useCallback(
     async (isCancelled: () => boolean = () => false) => {
       const next = await getSession(db, sessionId);

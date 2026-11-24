@@ -4,6 +4,7 @@ import { SessionExerciseDropdownActions } from "@/features/session/components/se
 import { colors, radius, spacing, typography } from "@/theme/colors";
 import { Dispatch, SetStateAction } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useWorkoutSession } from "../hooks/use-workout-session";
 
 export function WorkoutSessionExerciseCard({
   exercise,
@@ -14,7 +15,7 @@ export function WorkoutSessionExerciseCard({
   exercise: SessionExercise;
   setRemoveExerciseTarget: Dispatch<SetStateAction<SessionExercise | null>>;
   session: Session;
-  actions: object;
+  actions: ReturnType<typeof useWorkoutSession>["actions"];
 }) {
   if (!session) throw new Error("a session is required");
 
