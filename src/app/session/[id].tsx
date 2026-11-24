@@ -2,6 +2,7 @@ import { IconButton } from "@/components/icon-button";
 import { RouteError } from "@/components/route-error";
 import { Button, InlineError, sharedStyles } from "@/components/ui";
 import { SessionExercise } from "@/db/queries";
+import AddExerciseFAB from "@/features/session/components/add-exercise-fab";
 import { ErrorWorkoutSession } from "@/features/session/components/error-workout-session";
 import { LoadingWorkoutSession } from "@/features/session/components/loading-workout-session";
 import { NotFoundWorkoutSession } from "@/features/session/components/not-found-workout-session";
@@ -9,7 +10,7 @@ import RemoveExerciseModal from "@/features/session/components/remove-exercise-m
 import { WorkoutProgressBar } from "@/features/session/components/workout-progress-bar";
 import { WorkoutSessionExerciseCard } from "@/features/session/components/workout-session-exercise-card";
 import { useWorkoutSession } from "@/features/session/hooks/use-workout-session";
-import { colors, radius, spacing, typography } from "@/theme/colors";
+import { colors, fabHeight, radius, spacing, typography } from "@/theme/colors";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useKeepAwake } from "expo-keep-awake";
 import type { ErrorBoundaryProps } from "expo-router";
@@ -109,31 +110,14 @@ export default function WorkoutSessionScreen() {
             setRemoveExerciseTarget={setRemoveExerciseTarget}
           />
         ))}
-        <View style={{ height: 72 }} />
+        <View style={{ height: fabHeight }} />
       </ScrollView>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Add exercise"
-        disabled={session.status !== "in_progress"}
-        onPress={() =>
-          router.push({
-            pathname: "/session/add-exercise",
-            params: { sessionId: String(session.id) },
-          })
-        }
-        style={[
-          styles.fab,
-          {
-            bottom:
-              90 +
-              insets.bottom +
-              (session.rest_started_at && actions.timerRemaining > 0 ? 68 : 0),
-          },
-          session.status !== "in_progress" ? styles.fabDisabled : null,
-        ]}
-      >
-        <Ionicons name="add" size={24} color={colors.textOnPrimary} />
-      </Pressable>
+
+      <AddExerciseFAB
+        session={session}
+        timerRemaining={actions.timerRemaining}
+      />
+
       {session.rest_started_at && actions.timerRemaining > 0 ? (
         <View style={styles.timerDock}>
           <View style={sharedStyles.spread}>
@@ -241,24 +225,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryMuted,
   },
   timerProgress: { height: "100%", backgroundColor: colors.primary },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    zIndex: 5,
-    height: 56,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.primary,
-    elevation: 6,
-    shadowColor: colors.fabShadowColor,
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  fabDisabled: { opacity: 0.5 },
   footer: {
     padding: spacing.lg,
     paddingBottom: spacing.md,

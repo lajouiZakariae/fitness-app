@@ -31,3 +31,5 @@ export const typography = {
   body: 16,
   caption: 13,
 } as const;
+
+export const fabHeight = 56;
